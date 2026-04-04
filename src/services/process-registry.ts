@@ -1,0 +1,93 @@
+import type { ChildProcess } from 'child_process';
+
+interface TrackedProcess {
+  proc: ChildProcess;
+  workspaceId: string;
+  userId: string;
+  startedAt: number;
+}
+
+const registry = new Map<string, TrackedProcess>();
+
+export function registerProcess(
+  processId: string,
+  proc: ChildProcess,
+  workspaceId: string,
+  userId: string
+): void {
+  registry.set(processId, {
+    proc,
+    workspaceId,
+    userId,
+    startedAt: Date.now(),
+  });
+
+  proc.on('exit', () => {
+    registry.delete(processId);
+  });
+
+  proc.on('error', () => {
+    registry.delete(processId);
+  });
+}
+
+export function unregisterProcess(processId: string): boolean {
+  return registry.delete(processId);
+}
+
+export function getProcess(processId: string): TrackedProcess | undefined {
+  return registry.get(processId);
+}
+
+export function getProcessByWorkspace(workspaceId: string): TrackedProcess | undefined {
+  for (const tracked of registry.values()) {
+    if (tracked.workspaceId === workspaceId) {
+      return tracked;
+    }
+  }
+  return undefined;
+}
+
+export function stopProcess(processId: string, force = false): boolean {
+  const tracked = registry.get(processId);
+  if (!tracked || tracked.proc.killed) {
+    registry.delete(processId);
+    return false;
+  }
+
+  tracked.proc.kill(force ? 'SIGKILL' : 'SIGTERM');
+  return true;
+}
+
+export function stopWorkspace(workspaceId: string, force = false): boolean {
+  const tracked = getProcessByWorkspace(workspaceId);
+  if (!tracked) {
+    return false;
+  }
+  return stopProcess(tracked.proc.pid?.toString() || tracked.workspaceId, force);
+}
+
+export function listActive(): Array<{ processId: string; workspaceId: string; userId: string; startedAt: number }> {
+  const result: Array<{ processId: string; workspaceId: string; userId: string; startedAt: number }> = [];
+  for (const [processId, tracked] of registry) {
+    if (!tracked.proc.killed) {
+      result.push({
+        processId,
+        workspaceId: tracked.workspaceId,
+        userId: tracked.userId,
+        startedAt: tracked.startedAt,
+      });
+    }
+  }
+  return result;
+}
+
+export function countActive(): number {
+  let count = 0;
+  for (const tracked of registry.values()) {
+    if (!tracked.proc.killed) {
+      count++;
+    }
+  }
+  return count;
+}

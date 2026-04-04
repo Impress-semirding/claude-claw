@@ -1,0 +1,1615 @@
+
+> claw@1.0.0 dev
+> tsx watch src/index.ts
+
+Database initialized
+Sessions loaded from database
+🚀 Server running on http://localhost:3000
+📁 Data directory: /Users/dingxue/Documents/claude/claw/data
+🔧 Claude base directory: /Users/dingxue/Documents/claude/claw/data/sessions
+<-- GET /api/status
+--> GET /api/status [32m200[0m 5ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 1ms
+<-- POST /api/auth/login
+--> POST /api/auth/login [33m401[0m 5ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 2ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 3ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 2ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 1ms
+<-- POST /api/auth/login
+--> POST /api/auth/login [33m401[0m 1ms
+<-- POST /api/auth/login
+--> POST /api/auth/login [32m200[0m 81ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 1ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 1ms
+<-- POST /api/messages
+[messages] startQuery {
+  userId: '8d48ec6e-810f-4c97-b179-c41bd0836db2',
+  chatJid: '6685800d-23c5-4100-a5ea-48de2924106f',
+  sessionId: 'c189e94a-980d-43bd-93d8-2b9775525e05',
+  promptLength: 13
+}
+[claude-session] querySession start {
+  sessionId: 'c189e94a-980d-43bd-93d8-2b9775525e05',
+  baseUrl: 'https://api.kimi.com/coding/v1',
+  model: 'kimi-for-coding',
+  hasAuth: true
+}
+--> POST /api/messages [32m200[0m 10ms
+[claude-session] calling claudeQuery with prompt length 13
+[claude-session] querySession error Claude Code process exited with code 65
+[messages] stream event error 
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F [32m200[0m 1ms
+10:16:48 PM [tsx] change in ./src/services/claude-session.service.ts Restarting...
+
+Shutting down gracefully...
+cDatabase initialized
+Sessions loaded from database
+🚀 Server running on http://localhost:3000
+📁 Data directory: /Users/dingxue/Documents/claude/claw/data
+🔧 Claude base directory: /Users/dingxue/Documents/claude/claw/data/sessions
+<-- GET /api/status
+--> GET /api/status [32m200[0m 5ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 1ms
+<-- POST /api/messages
+[messages] startQuery {
+  userId: '8d48ec6e-810f-4c97-b179-c41bd0836db2',
+  chatJid: '6685800d-23c5-4100-a5ea-48de2924106f',
+  sessionId: '5352e56f-23ae-450d-bf97-9728c5f17769',
+  promptLength: 13
+}
+[claude-session] querySession start {
+  sessionId: '5352e56f-23ae-450d-bf97-9728c5f17769',
+  baseUrl: 'https://api.kimi.com/coding/v1',
+  model: 'kimi-for-coding',
+  hasAuth: true
+}
+--> POST /api/messages [32m200[0m 14ms
+[claude-session] calling claudeQuery with prompt length 13
+[claude-session] spawnClaudeCodeProcess node [
+  '/Users/dingxue/Documents/claude/claw/node_modules/@anthropic-ai/claude-agent-sdk/cli.js',
+  '--output-format',
+  'stream-json',
+  '--verbose',
+  '--input-format'
+]
+[claude-session] spawn stderr: sandbox-exec: unbound variable: inferior at /Users/dingxue/Documents/claude/claw/data/isolation/profiles/5352e56f-23ae-450d-bf97-9728c5f17769.sb, line 32, column 23
+
+Backtrace: 
+/Users/dingxue/Documents/claude/claw/data/isolation/profiles/5352e56f-23ae-450d-bf97-9728c5f17769.sb:32:23:
+	inferior
+
+
+[claude-session] spawn exit { code: 65, signal: null }
+[claude-session] querySession error Claude Code process exited with code 65
+[messages] stream event error 
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F [32m200[0m 2ms
+10:18:44 PM [tsx] change in ./src/services/workspace-isolator/sandbox-exec.ts Restarting...
+
+Shutting down gracefully...
+cDatabase initialized
+Sessions loaded from database
+🚀 Server running on http://localhost:3000
+📁 Data directory: /Users/dingxue/Documents/claude/claw/data
+🔧 Claude base directory: /Users/dingxue/Documents/claude/claw/data/sessions
+<-- GET /api/status
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/status [32m200[0m 3ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 5ms
+<-- POST /api/messages
+[messages] startQuery {
+  userId: '8d48ec6e-810f-4c97-b179-c41bd0836db2',
+  chatJid: '6685800d-23c5-4100-a5ea-48de2924106f',
+  sessionId: 'c35252de-7979-4628-8368-366dc5c9413c',
+  promptLength: 13
+}
+[claude-session] querySession start {
+  sessionId: 'c35252de-7979-4628-8368-366dc5c9413c',
+  baseUrl: 'https://api.kimi.com/coding/v1',
+  model: 'kimi-for-coding',
+  hasAuth: true
+}
+--> POST /api/messages [32m200[0m 9ms
+[claude-session] calling claudeQuery with prompt length 13
+[claude-session] spawnClaudeCodeProcess node [
+  '/Users/dingxue/Documents/claude/claw/node_modules/@anthropic-ai/claude-agent-sdk/cli.js',
+  '--output-format',
+  'stream-json',
+  '--verbose',
+  '--input-format'
+]
+[claude-session] spawn stderr: 
+  #  node[6508]: void node::os::GetOSInformation(const FunctionCallbackInfo<v8::Value> &) at ../src/node_os.cc:83
+  #  Assertion failed: (args.Length()) >= (1)
+
+----- Native stack trace -----
+
+
+[claude-session] spawn stderr:  1: 0x100747438 node::Assert(node::AssertionInfo const&) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr:  2: 0x10221530c node::os::GetOSInformation(v8::FunctionCallbackInfo<v8::Value> const&) (.cold.1) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr:  3: 0x1007a8988 node::os::GetOSInformation(v8::FunctionCallbackInfo<v8::Value> const&) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr:  4: 0x10138f118 Builtins_CallApiCallbackGeneric [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr:  5: 0x10138cef0 Builtins_InterpreterEntryTrampoline [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+ 6: 0x1072c9188 
+
+[claude-session] spawn stderr:  7: 0x10138cef0 Builtins_InterpreterEntryTrampoline [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr:  8: 0x10138cef0 Builtins_InterpreterEntryTrampoline [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr:  9: 0x10138cef0 Builtins_InterpreterEntryTrampoline [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 10: 0x10138cef0 Builtins_InterpreterEntryTrampoline [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 11: 0x10138cef0 Builtins_InterpreterEntryTrampoline [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 12: 0x1013c9410 Builtins_AsyncFunctionAwaitResolveClosure [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 13: 0x101494578 Builtins_PromiseFulfillReactionJob [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 14: 0x1013b9714 Builtins_RunMicrotasks [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 15: 0x10138aaf4 Builtins_JSRunMicrotasksEntry [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 16: 0x100a344a8 v8::internal::(anonymous namespace)::Invoke(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 17: 0x100a34938 v8::internal::(anonymous namespace)::InvokeWithTryCatch(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 18: 0x100a34a74 v8::internal::Execution::TryRunMicrotasks(v8::internal::Isolate*, v8::internal::MicrotaskQueue*) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 19: 0x100a5eb34 v8::internal::MicrotaskQueue::RunMicrotasks(v8::internal::Isolate*) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 20: 0x100a5f2d4 v8::internal::MicrotaskQueue::PerformCheckpoint(v8::Isolate*) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 21: 0x10066cc4c node::InternalCallbackScope::Close() [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 22: 0x10066c7bc node::InternalCallbackScope::~InternalCallbackScope() [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 23: 0x10074b770 node::fs::FileHandle::CloseReq::Resolve() [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 24: 0x100764340 node::fs::FileHandle::ClosePromise()::$_0::__invoke(uv_fs_s*) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 25: 0x1007418bc node::MakeLibuvRequestCallback<uv_fs_s, void (*)(uv_fs_s*)>::Wrapper(uv_fs_s*) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 26: 0x101369290 uv__work_done [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 27: 0x10136cd64 uv__async_io [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 28: 0x10137f328 uv__io_poll [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 29: 0x10136d328 uv_run [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 30: 0x10066d714 node::SpinEventLoopInternal(node::Environment*) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 31: 0x1007872d0 node::NodeMainInstance::Run(node::ExitCode*, node::Environment*) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 32: 0x100786fe4 node::NodeMainInstance::Run() [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 33: 0x10070fd60 node::Start(int, char**) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+34: 0x19c05ab98 start [/usr/lib/dyld]
+
+----- JavaScript stack trace -----
+
+
+[claude-session] spawn stderr: 1: node:os:79:5
+2: compileForInternalLoader (node:internal/bootstrap/realm:398:7)
+3: compileForPublicLoader (node:internal/bootstrap/realm:337:10)
+4: loadBuiltinModule (node:internal/modules/helpers:104:7)
+5: builtinStrategy (node:internal/modules/esm/translators:409:18)
+6: callTranslator (node:internal/modules/esm/loader:429:14)
+7: moduleProvider (node:internal/modules/esm/loader:435:30)
+
+
+
+[claude-session] spawn exit { code: null, signal: 'SIGABRT' }
+[claude-session] querySession error Claude Code process terminated by signal SIGABRT
+[messages] stream event error 
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F [32m200[0m 2ms
+10:20:19 PM [tsx] change in ./src/services/workspace-isolator/sandbox-exec.ts Restarting...
+
+Shutting down gracefully...
+cDatabase initialized
+Sessions loaded from database
+🚀 Server running on http://localhost:3000
+📁 Data directory: /Users/dingxue/Documents/claude/claw/data
+🔧 Claude base directory: /Users/dingxue/Documents/claude/claw/data/sessions
+<-- GET /api/status
+--> GET /api/status [32m200[0m 4ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 1ms
+<-- POST /api/messages
+[messages] startQuery {
+  userId: '8d48ec6e-810f-4c97-b179-c41bd0836db2',
+  chatJid: '6685800d-23c5-4100-a5ea-48de2924106f',
+  sessionId: '27ec3ac5-a35d-4a28-9f4e-f94fe6a7c039',
+  promptLength: 13
+}
+[claude-session] querySession start {
+  sessionId: '27ec3ac5-a35d-4a28-9f4e-f94fe6a7c039',
+  baseUrl: 'https://api.kimi.com/coding/v1',
+  model: 'kimi-for-coding',
+  hasAuth: true
+}
+--> POST /api/messages [32m200[0m 14ms
+[claude-session] calling claudeQuery with prompt length 13
+[claude-session] spawnClaudeCodeProcess node [
+  '/Users/dingxue/Documents/claude/claw/node_modules/@anthropic-ai/claude-agent-sdk/cli.js',
+  '--output-format',
+  'stream-json',
+  '--verbose',
+  '--input-format'
+]
+[claude-session] spawn stderr: sandbox-exec: unbound variable: system-info* at /Users/dingxue/Documents/claude/claw/data/isolation/profiles/27ec3ac5-a35d-4a28-9f4e-f94fe6a7c039.sb, line 28, column 8
+
+Backtrace: 
+/Users/dingxue/Documents/claude/claw/data/isolation/profiles/27ec3ac5-a35d-4a28-9f4e-f94fe6a7c039.sb:28:8:
+	system-info*
+
+
+[claude-session] spawn exit { code: 65, signal: null }
+[claude-session] querySession error Claude Code process exited with code 65
+[messages] stream event error 
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F [32m200[0m 1ms
+10:21:45 PM [tsx] change in ./src/services/workspace-isolator/sandbox-exec.ts Restarting...
+
+Shutting down gracefully...
+cDatabase initialized
+Sessions loaded from database
+🚀 Server running on http://localhost:3000
+📁 Data directory: /Users/dingxue/Documents/claude/claw/data
+🔧 Claude base directory: /Users/dingxue/Documents/claude/claw/data/sessions
+<-- GET /api/status
+--> GET /api/status [32m200[0m 4ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 1ms
+<-- POST /api/messages
+[messages] startQuery {
+  userId: '8d48ec6e-810f-4c97-b179-c41bd0836db2',
+  chatJid: '6685800d-23c5-4100-a5ea-48de2924106f',
+  sessionId: '66177bde-d0b4-47f5-855a-e001b893816e',
+  promptLength: 13
+}
+[claude-session] querySession start {
+  sessionId: '66177bde-d0b4-47f5-855a-e001b893816e',
+  baseUrl: 'https://api.kimi.com/coding/v1',
+  model: 'kimi-for-coding',
+  hasAuth: true
+}
+--> POST /api/messages [32m200[0m 16ms
+[claude-session] calling claudeQuery with prompt length 13
+[claude-session] spawnClaudeCodeProcess node [
+  '/Users/dingxue/Documents/claude/claw/node_modules/@anthropic-ai/claude-agent-sdk/cli.js',
+  '--output-format',
+  'stream-json',
+  '--verbose',
+  '--input-format'
+]
+[claude-session] spawn stderr: 
+  #  node[7536]: void node::os::GetOSInformation(const FunctionCallbackInfo<v8::Value> &) at ../src/node_os.cc:83
+  #  Assertion failed: (args.Length()) >= (1)
+
+----- Native stack trace -----
+
+
+[claude-session] spawn stderr:  1: 0x10225b438 node::Assert(node::AssertionInfo const&) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr:  2: 0x103d2930c node::os::GetOSInformation(v8::FunctionCallbackInfo<v8::Value> const&) (.cold.1) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr:  3: 0x1022bc988 node::os::GetOSInformation(v8::FunctionCallbackInfo<v8::Value> const&) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr:  4: 0x102ea3118 Builtins_CallApiCallbackGeneric [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr:  5: 0x102ea0ef0 Builtins_InterpreterEntryTrampoline [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+ 6: 0x1090c9188 
+
+[claude-session] spawn stderr:  7: 0x102ea0ef0 Builtins_InterpreterEntryTrampoline [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr:  8: 0x102ea0ef0 Builtins_InterpreterEntryTrampoline [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr:  9: 0x102ea0ef0 Builtins_InterpreterEntryTrampoline [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 10: 0x102ea0ef0 Builtins_InterpreterEntryTrampoline [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 11: 0x102ea0ef0 Builtins_InterpreterEntryTrampoline [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 12: 0x102edd410 Builtins_AsyncFunctionAwaitResolveClosure [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 13: 0x102fa8578 Builtins_PromiseFulfillReactionJob [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 14: 0x102ecd714 Builtins_RunMicrotasks [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 15: 0x102e9eaf4 Builtins_JSRunMicrotasksEntry [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 16: 0x1025484a8 v8::internal::(anonymous namespace)::Invoke(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 17: 0x102548938 v8::internal::(anonymous namespace)::InvokeWithTryCatch(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 18: 0x102548a74 v8::internal::Execution::TryRunMicrotasks(v8::internal::Isolate*, v8::internal::MicrotaskQueue*) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 19: 0x102572b34 v8::internal::MicrotaskQueue::RunMicrotasks(v8::internal::Isolate*) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 20: 0x1025732d4 v8::internal::MicrotaskQueue::PerformCheckpoint(v8::Isolate*) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 21: 0x102180c4c node::InternalCallbackScope::Close() [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 22: 0x1021807bc node::InternalCallbackScope::~InternalCallbackScope() [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 23: 0x10225f770 node::fs::FileHandle::CloseReq::Resolve() [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 24: 0x102278340 node::fs::FileHandle::ClosePromise()::$_0::__invoke(uv_fs_s*) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 25: 0x1022558bc node::MakeLibuvRequestCallback<uv_fs_s, void (*)(uv_fs_s*)>::Wrapper(uv_fs_s*) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 26: 0x102e7d290 uv__work_done [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 27: 0x102e80d64 uv__async_io [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 28: 0x102e93328 uv__io_poll [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 29: 0x102e81328 uv_run [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 30: 0x102181714 node::SpinEventLoopInternal(node::Environment*) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 31: 0x10229b2d0 node::NodeMainInstance::Run(node::ExitCode*, node::Environment*) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 32: 0x10229afe4 node::NodeMainInstance::Run() [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+
+[claude-session] spawn stderr: 33: 0x102223d60 node::Start(int, char**) [/Users/dingxue/.nvm/versions/node/v22.1.0/bin/node]
+34: 0x19c05ab98 start [/usr/lib/dyld]
+
+----- JavaScript stack trace -----
+
+
+[claude-session] spawn stderr: 1: node:os:79:5
+2: compileForInternalLoader (node:internal/bootstrap/realm:398:7)
+3: compileForPublicLoader (node:internal/bootstrap/realm:337:10)
+4: loadBuiltinModule (node:internal/modules/helpers:104:7)
+5: builtinStrategy (node:internal/modules/esm/translators:409:18)
+6: callTranslator (node:internal/modules/esm/loader:429:14)
+7: moduleProvider (node:internal/modules/esm/loader:435:30)
+
+
+
+[claude-session] spawn exit { code: null, signal: 'SIGABRT' }
+[claude-session] querySession error Claude Code process terminated by signal SIGABRT
+[messages] stream event error 
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F [32m200[0m 1ms
+10:24:53 PM [tsx] change in ./src/services/workspace-isolator/sandbox-exec.ts Restarting...
+
+Shutting down gracefully...
+cDatabase initialized
+Sessions loaded from database
+🚀 Server running on http://localhost:3000
+📁 Data directory: /Users/dingxue/Documents/claude/claw/data
+🔧 Claude base directory: /Users/dingxue/Documents/claude/claw/data/sessions
+<-- GET /api/status
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/status [32m200[0m 4ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 7ms
+<-- POST /api/messages
+[messages] startQuery {
+  userId: '8d48ec6e-810f-4c97-b179-c41bd0836db2',
+  chatJid: '6685800d-23c5-4100-a5ea-48de2924106f',
+  sessionId: 'a122ccee-94c0-41e7-b3e0-4ef7bb984f9c',
+  promptLength: 13
+}
+[claude-session] querySession start {
+  sessionId: 'a122ccee-94c0-41e7-b3e0-4ef7bb984f9c',
+  baseUrl: 'https://api.kimi.com/coding/v1',
+  model: 'kimi-for-coding',
+  hasAuth: true
+}
+--> POST /api/messages [32m200[0m 9ms
+[claude-session] calling claudeQuery with prompt length 13
+[claude-session] spawnClaudeCodeProcess node [
+  '/Users/dingxue/Documents/claude/claw/node_modules/@anthropic-ai/claude-agent-sdk/cli.js',
+  '--output-format',
+  'stream-json',
+  '--verbose',
+  '--input-format'
+]
+[claude-session] spawn stdout: {"type":"control_response","response":{"subtype":"success","request_id":"zoq93tldefd","response":{"commands":[{"name":"compact","description":"Clear conversation history but keep a summary in context. Optional: /compact [instructions for summarization]","argumentHint":"<optional custom summarization instructions>"},{"name":"context","description":"Show current context usage","argumentHint":""},{"name":"cost","description":"Show the total cost and duration of the current session","argumentHint":"
+[claude-session] spawn stdout: {"type":"system","subtype":"init","cwd":"/Users/dingxue/Documents/claude/claw/data/sessions/8d48ec6e-810f-4c97-b179-c41bd0836db2/6685800d-23c5-4100-a5ea-48de2924106f/a122ccee-94c0-41e7-b3e0-4ef7bb984f9c","session_id":"d3465830-2336-483d-ba90-9dd9615cd8a4","tools":["Task","TaskOutput","Bash","Glob","Grep","ExitPlanMode","Read","Edit","Write","NotebookEdit","WebFetch","TodoWrite","WebSearch","KillShell","AskUserQuestion","Skill","EnterPlanMode","LSP"],"mcp_servers":[],"model":"kimi-for-coding","pe
+[claude-session] stream message system init
+[messages] stream event system init
+[claude-session] spawn stdout: {"type":"assistant","message":{"id":"42f147ca-379f-42ec-848f-6816939d9716","container":null,"model":"<synthetic>","role":"assistant","stop_reason":"stop_sequence","stop_sequence":"","type":"message","usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":null,"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0}},"content":[{"type":"text","tex
+[claude-session] stream message assistant 
+[messages] stream event assistant 
+[claude-session] spawn stdout: {"type":"result","subtype":"success","is_error":true,"duration_ms":3768,"duration_api_ms":0,"num_turns":1,"result":"API Error: 404 {\"error\":{\"message\":\"The requested resource was not found\",\"type\":\"resource_not_found_error\"}}","session_id":"d3465830-2336-483d-ba90-9dd9615cd8a4","total_cost_usd":0,"usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"stand
+[claude-session] stream message result success
+[messages] stream event result success
+[claude-session] spawn exit { code: 1, signal: null }
+[claude-session] querySession error Claude Code process exited with code 1
+[messages] stream event error 
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F [32m200[0m 1ms
+10:27:06 PM [tsx] change in ./src/services/claude-session.service.ts Restarting...
+
+Shutting down gracefully...
+cDatabase initialized
+Sessions loaded from database
+🚀 Server running on http://localhost:3000
+📁 Data directory: /Users/dingxue/Documents/claude/claw/data
+🔧 Claude base directory: /Users/dingxue/Documents/claude/claw/data/sessions
+<-- GET /api/status
+--> GET /api/status [32m200[0m 5ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 1ms
+<-- POST /api/messages
+[messages] startQuery {
+  userId: '8d48ec6e-810f-4c97-b179-c41bd0836db2',
+  chatJid: '6685800d-23c5-4100-a5ea-48de2924106f',
+  sessionId: '3395584c-1fd4-4941-adb3-fe96e8a5548b',
+  promptLength: 13
+}
+[claude-session] querySession start {
+  sessionId: '3395584c-1fd4-4941-adb3-fe96e8a5548b',
+  baseUrl: 'https://api.kimi.com/coding/v1',
+  model: 'kimi-for-coding',
+  hasAuth: true
+}
+--> POST /api/messages [32m200[0m 14ms
+[claude-session] calling claudeQuery with prompt length 13
+[claude-session] spawnClaudeCodeProcess node [
+  '/Users/dingxue/Documents/claude/claw/node_modules/@anthropic-ai/claude-agent-sdk/cli.js',
+  '--output-format',
+  'stream-json',
+  '--verbose',
+  '--input-format'
+]
+[claude-session] spawn stdout: {"type":"control_response","response":{"subtype":"success","request_id":"sq1rdezuty","response":{"commands":[{"name":"compact","description":"Clear conversation history but keep a summary in context. Optional: /compact [instructions for summarization]","argumentHint":"<optional custom summarization instructions>"},{"name":"context","description":"Show current context usage","argumentHint":""},{"name":"cost","description":"Show the total cost and duration of the current session","argumentHint":""
+[claude-session] spawn stdout: {"type":"system","subtype":"init","cwd":"/Users/dingxue/Documents/claude/claw/data/sessions/8d48ec6e-810f-4c97-b179-c41bd0836db2/6685800d-23c5-4100-a5ea-48de2924106f/3395584c-1fd4-4941-adb3-fe96e8a5548b","session_id":"ebf3fb7f-43fe-4661-aa03-792f1216a857","tools":["Task","TaskOutput","Bash","Glob","Grep","ExitPlanMode","Read","Edit","Write","NotebookEdit","WebFetch","TodoWrite","WebSearch","KillShell","AskUserQuestion","Skill","EnterPlanMode","LSP"],"mcp_servers":[],"model":"kimi-for-coding","pe
+[claude-session] stream message system init
+[messages] stream event system init
+[claude-session] spawn stdout: {"type":"assistant","message":{"id":"550c8b54-6d72-4e66-bb92-950e0cfe7d6f","container":null,"model":"<synthetic>","role":"assistant","stop_reason":"stop_sequence","stop_sequence":"","type":"message","usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":null,"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0}},"content":[{"type":"text","tex
+[claude-session] stream message assistant 
+[messages] stream event assistant 
+[claude-session] spawn stdout: {"type":"result","subtype":"success","is_error":true,"duration_ms":4028,"duration_api_ms":0,"num_turns":1,"result":"API Error: 404 {\"error\":{\"message\":\"The requested resource was not found\",\"type\":\"resource_not_found_error\"}}","session_id":"ebf3fb7f-43fe-4661-aa03-792f1216a857","total_cost_usd":0,"usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"stand
+[claude-session] stream message result success
+[messages] stream event error 
+[claude-session] spawn exit { code: 1, signal: null }
+[claude-session] querySession error Claude Code process exited with code 1
+[messages] stream event error 
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F [32m200[0m 2ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A27%3A16.878Z [32m200[0m 0ms
+<-- GET /api/auth/me
+--> GET /api/auth/me [32m200[0m 1ms
+<-- GET /api/groups
+<-- GET /api/billing/status
+--> GET /api/groups [32m200[0m 7ms
+--> GET /api/billing/status [32m200[0m 7ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 0ms
+<-- GET /api/billing/status
+--> GET /api/billing/status [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+<-- GET /api/status
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 0ms
+--> GET /api/status [32m200[0m 1ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 1ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 3ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+<-- GET /api/status
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 2ms
+--> GET /api/status [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 1ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/skills
+--> GET /api/skills [32m200[0m 1ms
+<-- GET /api/skills/sync-status
+--> GET /api/skills/sync-status [33m404[0m 0ms
+<-- GET /api/skills
+--> GET /api/skills [32m200[0m 0ms
+<-- GET /api/skills/sync-status
+--> GET /api/skills/sync-status [33m404[0m 1ms
+<-- GET /api/tasks
+--> GET /api/tasks [32m200[0m 1ms
+<-- GET /api/tasks
+--> GET /api/tasks [32m200[0m 0ms
+<-- GET /api/config/claude/providers
+--> GET /api/config/claude/providers [32m200[0m 1ms
+<-- GET /api/config/claude/providers
+--> GET /api/config/claude/providers [32m200[0m 1ms
+<-- GET /api/groups
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F
+<-- GET /api/status
+--> GET /api/groups [32m200[0m 4ms
+--> GET /api/status [32m200[0m 5ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F [32m200[0m 7ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 4ms
+<-- GET /api/status
+--> GET /api/status [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 0ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F [32m200[0m 1ms
+<-- POST /api/messages
+[messages] startQuery {
+  userId: '8d48ec6e-810f-4c97-b179-c41bd0836db2',
+  chatJid: '6685800d-23c5-4100-a5ea-48de2924106f',
+  sessionId: 'd6685b78-f518-44fa-8cff-eab94e61f477',
+  promptLength: 14
+}
+[claude-session] querySession start {
+  sessionId: 'd6685b78-f518-44fa-8cff-eab94e61f477',
+  baseUrl: 'https://api.kimi.com/coding/v1',
+  model: 'kimi-for-coding',
+  hasAuth: true
+}
+[claude-session] calling claudeQuery with prompt length 14
+[claude-session] spawnClaudeCodeProcess node [
+  '/Users/dingxue/Documents/claude/claw/node_modules/@anthropic-ai/claude-agent-sdk/cli.js',
+  '--output-format',
+  'stream-json',
+  '--verbose',
+  '--input-format'
+]
+--> POST /api/messages [32m200[0m 5ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 0ms
+[claude-session] spawn stdout: {"type":"control_response","response":{"subtype":"success","request_id":"i69k35mv3i","response":{"commands":[{"name":"compact","description":"Clear conversation history but keep a summary in context. Optional: /compact [instructions for summarization]","argumentHint":"<optional custom summarization instructions>"},{"name":"context","description":"Show current context usage","argumentHint":""},{"name":"cost","description":"Show the total cost and duration of the current session","argumentHint":""
+[claude-session] spawn stdout: {"type":"system","subtype":"init","cwd":"/Users/dingxue/Documents/claude/claw/data/sessions/8d48ec6e-810f-4c97-b179-c41bd0836db2/6685800d-23c5-4100-a5ea-48de2924106f/d6685b78-f518-44fa-8cff-eab94e61f477","session_id":"79b8f7e8-895f-4236-92e4-14394ef0fe0d","tools":["Task","TaskOutput","Bash","Glob","Grep","ExitPlanMode","Read","Edit","Write","NotebookEdit","WebFetch","TodoWrite","WebSearch","KillShell","AskUserQuestion","Skill","EnterPlanMode","LSP"],"mcp_servers":[],"model":"kimi-for-coding","pe
+[claude-session] stream message system init
+[messages] stream event system init
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 1ms
+[claude-session] spawn stdout: {"type":"assistant","message":{"id":"6171a264-03b6-4052-a289-7fc925735895","container":null,"model":"<synthetic>","role":"assistant","stop_reason":"stop_sequence","stop_sequence":"","type":"message","usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":null,"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0}},"content":[{"type":"text","tex
+[claude-session] stream message assistant 
+[messages] stream event assistant 
+[claude-session] spawn stdout: {"type":"result","subtype":"success","is_error":true,"duration_ms":5746,"duration_api_ms":0,"num_turns":1,"result":"API Error: 404 {\"error\":{\"message\":\"The requested resource was not found\",\"type\":\"resource_not_found_error\"}}","session_id":"79b8f7e8-895f-4236-92e4-14394ef0fe0d","total_cost_usd":0,"usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"stand
+[claude-session] stream message result success
+[messages] stream event error 
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 0ms
+[claude-session] spawn exit { code: 1, signal: null }
+[claude-session] querySession error Claude Code process exited with code 1
+[messages] stream event error 
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?path=%2F [32m200[0m 2ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 2ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 0ms
+<-- GET /api/auth/status
+--> GET /api/auth/status [32m200[0m 0ms
+<-- GET /api/auth/register/status
+--> GET /api/auth/register/status [32m200[0m 0ms
+<-- GET /api/auth/status
+--> GET /api/auth/status [32m200[0m 0ms
+<-- GET /api/auth/register/status
+--> GET /api/auth/register/status [32m200[0m 0ms
+<-- POST /api/auth/login
+--> POST /api/auth/login [32m200[0m 79ms
+<-- GET /api/auth/me
+--> GET /api/auth/me [32m200[0m 1ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 1ms
+<-- GET /api/billing/status
+--> GET /api/billing/status [32m200[0m 0ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 0ms
+<-- GET /api/billing/status
+--> GET /api/billing/status [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 0ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 1ms
+<-- GET /api/status
+--> GET /api/status [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 0ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 0ms
+<-- GET /api/status
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/status [32m200[0m 0ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 0ms
+<-- POST /api/groups
+--> POST /api/groups [32m201[0m 1ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 2ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 0ms
+<-- GET /api/tasks
+--> GET /api/tasks [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/files?
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/files? [32m200[0m 0ms
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/status
+--> GET /api/status [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/agents
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/agents [32m200[0m 0ms
+<-- GET /api/tasks
+--> GET /api/tasks [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50
+--> GET /api/groups/1d6da814-61a1-43d1-bce8-7775d516cf47/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 2ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50&after=2026-04-04T14%3A28%3A42.176Z [32m200[0m 1ms
+<-- GET /api/auth/status
+--> GET /api/auth/status [32m200[0m 0ms
+<-- GET /api/auth/register/status
+--> GET /api/auth/register/status [32m200[0m 1ms
+<-- GET /api/auth/status
+--> GET /api/auth/status [32m200[0m 0ms
+<-- GET /api/auth/register/status
+--> GET /api/auth/register/status [32m200[0m 0ms
+<-- POST /api/auth/login
+--> POST /api/auth/login [32m200[0m 74ms
+<-- GET /api/auth/me
+--> GET /api/auth/me [32m200[0m 0ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 1ms
+<-- GET /api/billing/status
+--> GET /api/billing/status [32m200[0m 0ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 1ms
+<-- GET /api/billing/status
+--> GET /api/billing/status [32m200[0m 2ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/status
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 2ms
+--> GET /api/status [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 1ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 1ms
+<-- GET /api/status
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/status [32m200[0m 0ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 1ms
+<-- POST /api/groups
+--> POST /api/groups [32m201[0m 1ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 0ms
+<-- GET /api/groups/250885e9-a7f0-44d4-b914-786a510c529e/messages?limit=50
+--> GET /api/groups/250885e9-a7f0-44d4-b914-786a510c529e/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/250885e9-a7f0-44d4-b914-786a510c529e/files?
+<-- GET /api/groups/250885e9-a7f0-44d4-b914-786a510c529e/messages?limit=50
+--> GET /api/groups/250885e9-a7f0-44d4-b914-786a510c529e/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/status
+--> GET /api/groups/250885e9-a7f0-44d4-b914-786a510c529e/files? [32m200[0m 1ms
+<-- GET /api/groups/250885e9-a7f0-44d4-b914-786a510c529e/agents
+--> GET /api/status [32m200[0m 1ms
+--> GET /api/groups/250885e9-a7f0-44d4-b914-786a510c529e/agents [32m200[0m 1ms
+<-- GET /api/groups
+<-- GET /api/tasks
+--> GET /api/groups [32m200[0m 0ms
+--> GET /api/tasks [32m200[0m 1ms
+<-- GET /api/tasks
+--> GET /api/tasks [32m200[0m 1ms
+<-- GET /api/auth/status
+--> GET /api/auth/status [32m200[0m 0ms
+<-- GET /api/auth/register/status
+--> GET /api/auth/register/status [32m200[0m 0ms
+<-- GET /api/auth/status
+--> GET /api/auth/status [32m200[0m 0ms
+<-- GET /api/auth/register/status
+--> GET /api/auth/register/status [32m200[0m 0ms
+<-- POST /api/auth/login
+--> POST /api/auth/login [32m200[0m 73ms
+<-- GET /api/auth/me
+--> GET /api/auth/me [32m200[0m 1ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 3ms
+<-- GET /api/billing/status
+--> GET /api/billing/status [32m200[0m 1ms
+<-- GET /api/groups
+<-- GET /api/billing/status
+--> GET /api/groups [32m200[0m 1ms
+--> GET /api/billing/status [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 0ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/status
+--> GET /api/status [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/status
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 1ms
+--> GET /api/status [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 0ms
+<-- POST /api/groups
+--> POST /api/groups [32m201[0m 2ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 1ms
+<-- GET /api/groups/1ed782c1-2cf7-48ca-9b32-e370924805f1/messages?limit=50
+--> GET /api/groups/1ed782c1-2cf7-48ca-9b32-e370924805f1/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/1ed782c1-2cf7-48ca-9b32-e370924805f1/files?
+<-- GET /api/groups/1ed782c1-2cf7-48ca-9b32-e370924805f1/messages?limit=50
+--> GET /api/groups/1ed782c1-2cf7-48ca-9b32-e370924805f1/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/status
+--> GET /api/groups/1ed782c1-2cf7-48ca-9b32-e370924805f1/files? [32m200[0m 1ms
+--> GET /api/status [32m200[0m 0ms
+<-- GET /api/groups/1ed782c1-2cf7-48ca-9b32-e370924805f1/agents
+--> GET /api/groups/1ed782c1-2cf7-48ca-9b32-e370924805f1/agents [32m200[0m 0ms
+<-- GET /api/tasks
+--> GET /api/tasks [32m200[0m 0ms
+<-- GET /api/groups
+<-- GET /api/tasks
+--> GET /api/groups [32m200[0m 1ms
+--> GET /api/tasks [32m200[0m 0ms
+<-- POST /api/messages
+[messages] startQuery {
+  userId: '8d48ec6e-810f-4c97-b179-c41bd0836db2',
+  chatJid: '1ed782c1-2cf7-48ca-9b32-e370924805f1',
+  sessionId: 'f531c81b-324a-447c-9ec3-a2fa180a5a77',
+  promptLength: 14
+}
+[claude-session] querySession start {
+  sessionId: 'f531c81b-324a-447c-9ec3-a2fa180a5a77',
+  baseUrl: 'http://127.0.0.1:3456',
+  model: 'claude-sonnet-4-20250514',
+  hasAuth: true
+}
+[claude-session] calling claudeQuery with prompt length 14
+[claude-session] spawnClaudeCodeProcess node [
+  '/Users/dingxue/Documents/claude/claw/node_modules/@anthropic-ai/claude-agent-sdk/cli.js',
+  '--output-format',
+  'stream-json',
+  '--verbose',
+  '--input-format'
+]
+--> POST /api/messages [32m200[0m 17ms
+[claude-session] spawn stdout: {"type":"control_response","response":{"subtype":"success","request_id":"jfpyrajkc69","response":{"commands":[{"name":"compact","description":"Clear conversation history but keep a summary in context. Optional: /compact [instructions for summarization]","argumentHint":"<optional custom summarization instructions>"},{"name":"context","description":"Show current context usage","argumentHint":""},{"name":"cost","description":"Show the total cost and duration of the current session","argumentHint":"
+[claude-session] spawn stdout: {"type":"system","subtype":"init","cwd":"/Users/dingxue/Documents/claude/claw/data/sessions/8d48ec6e-810f-4c97-b179-c41bd0836db2/1ed782c1-2cf7-48ca-9b32-e370924805f1/f531c81b-324a-447c-9ec3-a2fa180a5a77","session_id":"35e68c12-6b7d-4c13-bf4c-63451c093b1e","tools":["Task","TaskOutput","Bash","Glob","Grep","ExitPlanMode","Read","Edit","Write","NotebookEdit","WebFetch","TodoWrite","WebSearch","KillShell","AskUserQuestion","Skill","EnterPlanMode","LSP"],"mcp_servers":[],"model":"claude-sonnet-4-2025
+[claude-session] stream message system init
+[messages] stream event system init
+<-- GET /api/auth/status
+--> GET /api/auth/status [32m200[0m 1ms
+<-- GET /api/auth/register/status
+--> GET /api/auth/register/status [32m200[0m 0ms
+<-- GET /api/auth/status
+--> GET /api/auth/status [32m200[0m 1ms
+<-- GET /api/auth/register/status
+--> GET /api/auth/register/status [32m200[0m 0ms
+<-- POST /api/auth/login
+--> POST /api/auth/login [32m200[0m 74ms
+<-- GET /api/auth/me
+--> GET /api/auth/me [32m200[0m 0ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 1ms
+<-- GET /api/billing/status
+--> GET /api/billing/status [32m200[0m 0ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 1ms
+<-- GET /api/billing/status
+--> GET /api/billing/status [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 1ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/status
+--> GET /api/status [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/status
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 1ms
+--> GET /api/status [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 0ms
+<-- POST /api/groups
+--> POST /api/groups [32m201[0m 1ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups
+<-- GET /api/tasks
+--> GET /api/groups [32m200[0m 0ms
+--> GET /api/tasks [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/files?
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/status
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/files? [32m200[0m 1ms
+--> GET /api/status [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/agents
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/agents [32m200[0m 0ms
+<-- GET /api/tasks
+--> GET /api/tasks [32m200[0m 0ms
+<-- POST /api/messages
+[messages] startQuery {
+  userId: '8d48ec6e-810f-4c97-b179-c41bd0836db2',
+  chatJid: 'db49c2e6-36c2-489f-85f9-22e5a2805735',
+  sessionId: '88c5d79e-5db5-4d0b-9798-ec9510d43ce6',
+  promptLength: 14
+}
+[claude-session] querySession start {
+  sessionId: '88c5d79e-5db5-4d0b-9798-ec9510d43ce6',
+  baseUrl: 'http://127.0.0.1:3456',
+  model: 'claude-sonnet-4-20250514',
+  hasAuth: true
+}
+[claude-session] calling claudeQuery with prompt length 14
+[claude-session] spawnClaudeCodeProcess node [
+  '/Users/dingxue/Documents/claude/claw/node_modules/@anthropic-ai/claude-agent-sdk/cli.js',
+  '--output-format',
+  'stream-json',
+  '--verbose',
+  '--input-format'
+]
+--> POST /api/messages [32m200[0m 5ms
+[claude-session] spawn stdout: {"type":"control_response","response":{"subtype":"success","request_id":"k3yvy6chnr","response":{"commands":[{"name":"compact","description":"Clear conversation history but keep a summary in context. Optional: /compact [instructions for summarization]","argumentHint":"<optional custom summarization instructions>"},{"name":"context","description":"Show current context usage","argumentHint":""},{"name":"cost","description":"Show the total cost and duration of the current session","argumentHint":""
+[claude-session] spawn stdout: {"type":"system","subtype":"init","cwd":"/Users/dingxue/Documents/claude/claw/data/sessions/8d48ec6e-810f-4c97-b179-c41bd0836db2/db49c2e6-36c2-489f-85f9-22e5a2805735/88c5d79e-5db5-4d0b-9798-ec9510d43ce6","session_id":"bc2a099f-2d5d-4d0d-931e-4bd09156bc4a","tools":["Task","TaskOutput","Bash","Glob","Grep","ExitPlanMode","Read","Edit","Write","NotebookEdit","WebFetch","TodoWrite","WebSearch","KillShell","AskUserQuestion","Skill","EnterPlanMode","LSP"],"mcp_servers":[],"model":"claude-sonnet-4-2025
+[claude-session] stream message system init
+[messages] stream event system init
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 0ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 0ms
+[claude-session] spawn stdout: {"type":"assistant","message":{"id":"3328fbda-de32-4ec3-943b-a71a38840c1c","container":null,"model":"<synthetic>","role":"assistant","stop_reason":"stop_sequence","stop_sequence":"","type":"message","usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":null,"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0}},"content":[{"type":"text","tex
+[claude-session] stream message assistant 
+[messages] stream event assistant 
+[claude-session] spawn stdout: {"type":"result","subtype":"success","is_error":true,"duration_ms":3410,"duration_api_ms":0,"num_turns":1,"result":"API Error: 404 {\"error\":{\"message\":\"Not found\",\"type\":\"not_found_error\"}}","session_id":"bc2a099f-2d5d-4d0d-931e-4bd09156bc4a","total_cost_usd":0,"usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h
+[claude-session] stream message result success
+[messages] stream event error 
+[claude-session] spawn exit { code: 1, signal: null }
+[claude-session] querySession error Claude Code process exited with code 1
+[messages] stream event error 
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/files?path=%2F
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/files?path=%2F [32m200[0m 0ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 2ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 2ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 2ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 2ms
+[claude-session] spawn stdout: {"type":"assistant","message":{"id":"1cd7391d-b295-4dac-aa20-9080a43439d9","container":null,"model":"<synthetic>","role":"assistant","stop_reason":"stop_sequence","stop_sequence":"","type":"message","usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":null,"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0}},"content":[{"type":"text","tex
+[claude-session] stream message assistant 
+[messages] stream event assistant 
+[claude-session] spawn stdout: {"type":"result","subtype":"success","is_error":true,"duration_ms":74374,"duration_api_ms":0,"num_turns":1,"result":"API Error: 404 {\"error\":{\"message\":\"Not found\",\"type\":\"not_found_error\"}}","session_id":"35e68c12-6b7d-4c13-bf4c-63451c093b1e","total_cost_usd":0,"usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1
+[claude-session] stream message result success
+[messages] stream event error 
+[claude-session] spawn exit { code: 1, signal: null }
+[claude-session] querySession error Claude Code process exited with code 1
+[messages] stream event error 
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 2ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 2ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 2ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 0ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 0ms
+<-- GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z
+--> GET /api/groups/db49c2e6-36c2-489f-85f9-22e5a2805735/messages?limit=50&after=2026-04-04T14%3A45%3A06.082Z [32m200[0m 1ms
+<-- GET /api/auth/status
+--> GET /api/auth/status [32m200[0m 0ms
+<-- GET /api/auth/register/status
+--> GET /api/auth/register/status [32m200[0m 0ms
+<-- GET /api/auth/status
+--> GET /api/auth/status [32m200[0m 1ms
+<-- GET /api/auth/register/status
+--> GET /api/auth/register/status [32m200[0m 0ms
+<-- POST /api/auth/login
+--> POST /api/auth/login [32m200[0m 72ms
+<-- GET /api/auth/me
+--> GET /api/auth/me [32m200[0m 1ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 0ms
+<-- GET /api/billing/status
+--> GET /api/billing/status [32m200[0m 0ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 0ms
+<-- GET /api/billing/status
+--> GET /api/billing/status [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+<-- GET /api/status
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 1ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 1ms
+--> GET /api/status [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 0ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 0ms
+<-- GET /api/status
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/status [32m200[0m 1ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 1ms
+<-- POST /api/groups
+--> POST /api/groups [32m201[0m 1ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 0ms
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50 [32m200[0m 0ms
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/files?
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50
+<-- GET /api/status
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/agents
+--> GET /api/status [32m200[0m 2ms
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/files? [32m200[0m 3ms
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/agents [32m200[0m 1ms
+<-- GET /api/tasks
+--> GET /api/tasks [32m200[0m 1ms
+<-- GET /api/groups
+<-- GET /api/tasks
+--> GET /api/groups [32m200[0m 0ms
+--> GET /api/tasks [32m200[0m 0ms
+<-- POST /api/messages
+[messages] startQuery {
+  userId: '8d48ec6e-810f-4c97-b179-c41bd0836db2',
+  chatJid: 'b4c75357-cc2a-4a57-941b-077969683d50',
+  sessionId: 'dfd654ba-a148-4544-b63f-6a058b7b492d',
+  promptLength: 14
+}
+[claude-session] querySession start {
+  sessionId: 'dfd654ba-a148-4544-b63f-6a058b7b492d',
+  baseUrl: 'http://127.0.0.1:3456',
+  model: 'claude-sonnet-4-20250514',
+  hasAuth: true
+}
+[claude-session] calling claudeQuery with prompt length 14
+[claude-session] spawnClaudeCodeProcess node [
+  '/Users/dingxue/Documents/claude/claw/node_modules/@anthropic-ai/claude-agent-sdk/cli.js',
+  '--output-format',
+  'stream-json',
+  '--verbose',
+  '--input-format'
+]
+--> POST /api/messages [32m200[0m 3ms
+[claude-session] spawn stdout: {"type":"control_response","response":{"subtype":"success","request_id":"1oipoavhsp9","response":{"commands":[{"name":"compact","description":"Clear conversation history but keep a summary in context. Optional: /compact [instructions for summarization]","argumentHint":"<optional custom summarization instructions>"},{"name":"context","description":"Show current context usage","argumentHint":""},{"name":"cost","description":"Show the total cost and duration of the current session","argumentHint":"
+[claude-session] spawn stdout: {"type":"system","subtype":"init","cwd":"/Users/dingxue/Documents/claude/claw/data/sessions/8d48ec6e-810f-4c97-b179-c41bd0836db2/b4c75357-cc2a-4a57-941b-077969683d50/dfd654ba-a148-4544-b63f-6a058b7b492d","session_id":"dd49d933-c512-470f-81fc-8765719269d3","tools":["Task","TaskOutput","Bash","Glob","Grep","ExitPlanMode","Read","Edit","Write","NotebookEdit","WebFetch","TodoWrite","WebSearch","KillShell","AskUserQuestion","Skill","EnterPlanMode","LSP"],"mcp_servers":[],"model":"claude-sonnet-4-2025
+[claude-session] stream message system init
+[messages] stream event system init
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z [32m200[0m 0ms
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z [32m200[0m 0ms
+[claude-session] spawn stdout: {"type":"assistant","message":{"id":"703f2c0f-be21-4a48-a907-92f15ac7e14d","container":null,"model":"<synthetic>","role":"assistant","stop_reason":"stop_sequence","stop_sequence":"","type":"message","usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":null,"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0}},"content":[{"type":"text","tex
+[claude-session] stream message assistant 
+[messages] stream event assistant 
+[claude-session] spawn stdout: {"type":"result","subtype":"success","is_error":true,"duration_ms":3028,"duration_api_ms":0,"num_turns":1,"result":"API Error: 404 {\"error\":{\"message\":\"Not found\",\"type\":\"not_found_error\"}}","session_id":"dd49d933-c512-470f-81fc-8765719269d3","total_cost_usd":0,"usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h
+[claude-session] stream message result success
+[messages] stream event error 
+[claude-session] spawn exit { code: 1, signal: null }
+[claude-session] querySession error Claude Code process exited with code 1
+[messages] stream event error 
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/files?path=%2F
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/files?path=%2F [32m200[0m 1ms
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z [32m200[0m 1ms
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z [32m200[0m 0ms
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z [32m200[0m 1ms
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z [32m200[0m 1ms
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z [32m200[0m 1ms
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z [32m200[0m 1ms
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z [32m200[0m 1ms
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z [32m200[0m 0ms
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z [32m200[0m 1ms
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z [32m200[0m 1ms
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z [32m200[0m 1ms
+<-- GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z
+--> GET /api/groups/b4c75357-cc2a-4a57-941b-077969683d50/messages?limit=50&after=2026-04-04T14%3A50%3A21.493Z [32m200[0m 1ms
+<-- GET /api/auth/status
+--> GET /api/auth/status [32m200[0m 1ms
+<-- GET /api/auth/register/status
+--> GET /api/auth/register/status [32m200[0m 0ms
+<-- GET /api/auth/status
+--> GET /api/auth/status [32m200[0m 0ms
+<-- GET /api/auth/register/status
+--> GET /api/auth/register/status [32m200[0m 0ms
+<-- POST /api/auth/login
+--> POST /api/auth/login [32m200[0m 72ms
+<-- GET /api/auth/me
+--> GET /api/auth/me [32m200[0m 0ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 0ms
+<-- GET /api/billing/status
+--> GET /api/billing/status [32m200[0m 0ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 0ms
+<-- GET /api/billing/status
+--> GET /api/billing/status [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+<-- GET /api/status
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/status [32m200[0m 0ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 2ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 0ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 1ms
+<-- GET /api/status
+--> GET /api/status [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 1ms
+<-- POST /api/groups
+--> POST /api/groups [32m201[0m 1ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 0ms
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/files?
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50
+<-- GET /api/status
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50 [32m200[0m 1ms
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/files? [32m200[0m 1ms
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/agents
+--> GET /api/status [32m200[0m 2ms
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/agents [32m200[0m 1ms
+<-- GET /api/tasks
+--> GET /api/tasks [32m200[0m 0ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 1ms
+<-- GET /api/tasks
+--> GET /api/tasks [32m200[0m 0ms
+<-- POST /api/messages
+[messages] startQuery {
+  userId: '8d48ec6e-810f-4c97-b179-c41bd0836db2',
+  chatJid: '7428cc89-42b3-4a26-9746-8d2e7648837f',
+  sessionId: '8b4856af-8b18-40eb-b03d-19049ec3b1fc',
+  promptLength: 14
+}
+[claude-session] querySession start {
+  sessionId: '8b4856af-8b18-40eb-b03d-19049ec3b1fc',
+  baseUrl: 'http://127.0.0.1:3456',
+  model: 'claude-sonnet-4-20250514',
+  hasAuth: true
+}
+[claude-session] calling claudeQuery with prompt length 14
+[claude-session] spawnClaudeCodeProcess node [
+  '/Users/dingxue/Documents/claude/claw/node_modules/@anthropic-ai/claude-agent-sdk/cli.js',
+  '--output-format',
+  'stream-json',
+  '--verbose',
+  '--input-format'
+]
+--> POST /api/messages [32m200[0m 4ms
+[claude-session] spawn stdout: {"type":"control_response","response":{"subtype":"success","request_id":"dtyf990186e","response":{"commands":[{"name":"compact","description":"Clear conversation history but keep a summary in context. Optional: /compact [instructions for summarization]","argumentHint":"<optional custom summarization instructions>"},{"name":"context","description":"Show current context usage","argumentHint":""},{"name":"cost","description":"Show the total cost and duration of the current session","argumentHint":"
+[claude-session] spawn stdout: {"type":"system","subtype":"init","cwd":"/Users/dingxue/Documents/claude/claw/data/sessions/8d48ec6e-810f-4c97-b179-c41bd0836db2/7428cc89-42b3-4a26-9746-8d2e7648837f/8b4856af-8b18-40eb-b03d-19049ec3b1fc","session_id":"dd034b48-274a-432e-9752-5b16547708b6","tools":["Task","TaskOutput","Bash","Glob","Grep","ExitPlanMode","Read","Edit","Write","NotebookEdit","WebFetch","TodoWrite","WebSearch","KillShell","AskUserQuestion","Skill","EnterPlanMode","LSP"],"mcp_servers":[],"model":"claude-sonnet-4-2025
+[claude-session] stream message system init
+[messages] stream event system init
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z [32m200[0m 1ms
+[claude-session] spawn stdout: {"type":"assistant","message":{"id":"msg_mock_001","type":"message","role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"你好！这是来自 Playwright 自动化测试的模拟回复。整个聊天 → Agent 调度 → Claude SDK query → 回复用户的链路已成功打通。"}],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":12,"output_tokens":80},"context_management":null},"parent_tool_use_id":null,"session_id":"dd034b48-274a-432e-9752-5b16547708b6","uuid":"a21fb851-abdb-464d-8829-c4c984f5d7fa"}
+
+[claude-session] stream message assistant 
+[messages] stream event assistant 
+[claude-session] spawn stdout: {"type":"result","subtype":"success","is_error":false,"duration_ms":1700,"duration_api_ms":622,"num_turns":1,"result":"你好！这是来自 Playwright 自动化测试的模拟回复。整个聊天 → Agent 调度 → Claude SDK query → 回复用户的链路已成功打通。","session_id":"dd034b48-274a-432e-9752-5b16547708b6","total_cost_usd":0.0012360000000000001,"usage":{"input_tokens":12,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":80,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_cr
+[claude-session] stream message result success
+[claude-session] spawn exit { code: 0, signal: null }
+[messages] stream event complete 
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/files?path=%2F
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/files?path=%2F [32m200[0m 0ms
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z [32m200[0m 1ms
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z [32m200[0m 1ms
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z [32m200[0m 1ms
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z [32m200[0m 1ms
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z [32m200[0m 1ms
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z [32m200[0m 0ms
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z [32m200[0m 0ms
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z [32m200[0m 1ms
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z [32m200[0m 1ms
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z [32m200[0m 1ms
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z [32m200[0m 1ms
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z [32m200[0m 1ms
+<-- GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z
+--> GET /api/groups/7428cc89-42b3-4a26-9746-8d2e7648837f/messages?limit=50&after=2026-04-04T14%3A53%3A14.067Z [32m200[0m 1ms
+<-- GET /api/auth/status
+--> GET /api/auth/status [32m200[0m 1ms
+<-- GET /api/auth/register/status
+--> GET /api/auth/register/status [32m200[0m 0ms
+<-- GET /api/auth/status
+--> GET /api/auth/status [32m200[0m 0ms
+<-- GET /api/auth/register/status
+--> GET /api/auth/register/status [32m200[0m 0ms
+<-- POST /api/auth/login
+--> POST /api/auth/login [32m200[0m 73ms
+<-- GET /api/auth/me
+--> GET /api/auth/me [32m200[0m 1ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 0ms
+<-- GET /api/billing/status
+--> GET /api/billing/status [32m200[0m 0ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 0ms
+<-- GET /api/billing/status
+--> GET /api/billing/status [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+<-- GET /api/status
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 1ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 1ms
+--> GET /api/status [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/status
+--> GET /api/status [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 0ms
+<-- POST /api/groups
+--> POST /api/groups [32m201[0m 1ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 1ms
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups
+<-- GET /api/tasks
+--> GET /api/groups [32m200[0m 0ms
+--> GET /api/tasks [32m200[0m 1ms
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/files?
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50
+<-- GET /api/status
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50 [32m200[0m 1ms
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/files? [32m200[0m 1ms
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/agents
+--> GET /api/status [32m200[0m 1ms
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/agents [32m200[0m 0ms
+<-- GET /api/tasks
+--> GET /api/tasks [32m200[0m 0ms
+<-- POST /api/messages
+[messages] startQuery {
+  userId: '8d48ec6e-810f-4c97-b179-c41bd0836db2',
+  chatJid: '5f0e78af-45e8-4fd6-a566-3feb2a30ce0b',
+  sessionId: '842babd2-2ba9-4579-8fdd-858c83cf43c4',
+  promptLength: 14
+}
+[claude-session] querySession start {
+  sessionId: '842babd2-2ba9-4579-8fdd-858c83cf43c4',
+  baseUrl: 'http://127.0.0.1:3456',
+  model: 'claude-sonnet-4-20250514',
+  hasAuth: true
+}
+[claude-session] calling claudeQuery with prompt length 14
+[claude-session] spawnClaudeCodeProcess node [
+  '/Users/dingxue/Documents/claude/claw/node_modules/@anthropic-ai/claude-agent-sdk/cli.js',
+  '--output-format',
+  'stream-json',
+  '--verbose',
+  '--input-format'
+]
+--> POST /api/messages [32m200[0m 4ms
+[claude-session] spawn stdout: {"type":"control_response","response":{"subtype":"success","request_id":"qp397w1dbxq","response":{"commands":[{"name":"compact","description":"Clear conversation history but keep a summary in context. Optional: /compact [instructions for summarization]","argumentHint":"<optional custom summarization instructions>"},{"name":"context","description":"Show current context usage","argumentHint":""},{"name":"cost","description":"Show the total cost and duration of the current session","argumentHint":"
+[claude-session] spawn stdout: {"type":"system","subtype":"init","cwd":"/Users/dingxue/Documents/claude/claw/data/sessions/8d48ec6e-810f-4c97-b179-c41bd0836db2/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/842babd2-2ba9-4579-8fdd-858c83cf43c4","session_id":"8f06499b-4165-4cdb-9748-d9b1db147924","tools":["Task","TaskOutput","Bash","Glob","Grep","ExitPlanMode","Read","Edit","Write","NotebookEdit","WebFetch","TodoWrite","WebSearch","KillShell","AskUserQuestion","Skill","EnterPlanMode","LSP"],"mcp_servers":[],"model":"claude-sonnet-4-2025
+[claude-session] stream message system init
+[messages] stream event system init
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z [32m200[0m 1ms
+[claude-session] spawn stdout: {"type":"assistant","message":{"id":"msg_mock_001","type":"message","role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"你好！这是来自 Playwright 自动化测试的模拟回复。整个聊天 → Agent 调度 → Claude SDK query → 回复用户的链路已成功打通。"}],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":12,"output_tokens":80},"context_management":null},"parent_tool_use_id":null,"session_id":"8f06499b-4165-4cdb-9748-d9b1db147924","uuid":"3c6afc1a-b5ca-4579-9310-f43e2ce518ac"}
+
+[claude-session] stream message assistant 
+[messages] stream event assistant 
+[claude-session] spawn stdout: {"type":"result","subtype":"success","is_error":false,"duration_ms":1896,"duration_api_ms":621,"num_turns":1,"result":"你好！这是来自 Playwright 自动化测试的模拟回复。整个聊天 → Agent 调度 → Claude SDK query → 回复用户的链路已成功打通。","session_id":"8f06499b-4165-4cdb-9748-d9b1db147924","total_cost_usd":0.0012360000000000001,"usage":{"input_tokens":12,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":80,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_cr
+[claude-session] stream message result success
+[claude-session] spawn exit { code: 0, signal: null }
+[messages] stream event complete 
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/files?path=%2F
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/files?path=%2F [32m200[0m 1ms
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z [32m200[0m 1ms
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z [32m200[0m 0ms
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z [32m200[0m 1ms
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z [32m200[0m 2ms
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z [32m200[0m 2ms
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z [32m200[0m 0ms
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z [32m200[0m 1ms
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z [32m200[0m 1ms
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z [32m200[0m 1ms
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z [32m200[0m 2ms
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z [32m200[0m 1ms
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z [32m200[0m 1ms
+<-- GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z
+--> GET /api/groups/5f0e78af-45e8-4fd6-a566-3feb2a30ce0b/messages?limit=50&after=2026-04-04T14%3A54%3A43.971Z [32m200[0m 1ms
+10:57:00 PM [tsx] change in ./src/services/claude-session.service.ts Restarting...
+
+Shutting down gracefully...
+cDatabase initialized
+Sessions loaded from database
+🚀 Server running on http://localhost:3000
+📁 Data directory: /Users/dingxue/Documents/claude/claw/data
+🔧 Claude base directory: /Users/dingxue/Documents/claude/claw/data/sessions
+<-- GET /api/status
+--> GET /api/status [32m200[0m 3ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 1ms
+<-- GET /api/auth/status
+--> GET /api/auth/status [32m200[0m 0ms
+<-- GET /api/auth/register/status
+--> GET /api/auth/register/status [32m200[0m 1ms
+<-- GET /api/auth/status
+--> GET /api/auth/status [32m200[0m 0ms
+<-- GET /api/auth/register/status
+--> GET /api/auth/register/status [32m200[0m 0ms
+<-- POST /api/auth/login
+--> POST /api/auth/login [32m200[0m 80ms
+<-- GET /api/auth/me
+--> GET /api/auth/me [32m200[0m 1ms
+<-- GET /api/groups
+<-- GET /api/billing/status
+--> GET /api/groups [32m200[0m 1ms
+--> GET /api/billing/status [32m200[0m 2ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 1ms
+<-- GET /api/billing/status
+--> GET /api/billing/status [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/status
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 2ms
+--> GET /api/status [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 1ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files?
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/messages?limit=50 [32m200[0m 1ms
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/files? [32m200[0m 1ms
+<-- GET /api/status
+--> GET /api/status [32m200[0m 0ms
+<-- GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents
+--> GET /api/groups/6685800d-23c5-4100-a5ea-48de2924106f/agents [32m200[0m 0ms
+<-- POST /api/groups
+--> POST /api/groups [32m201[0m 2ms
+<-- GET /api/groups
+--> GET /api/groups [32m200[0m 1ms
+<-- GET /api/groups
+<-- GET /api/tasks
+--> GET /api/groups [32m200[0m 1ms
+--> GET /api/tasks [32m200[0m 2ms
+<-- GET /api/groups/c847b801-fa6e-4408-a87b-de5eb074ae4a/messages?limit=50
+--> GET /api/groups/c847b801-fa6e-4408-a87b-de5eb074ae4a/messages?limit=50 [32m200[0m 1ms
+<-- GET /api/groups/c847b801-fa6e-4408-a87b-de5eb074ae4a/files?
+<-- GET /api/groups/c847b801-fa6e-4408-a87b-de5eb074ae4a/messages?limit=50
+--> GET /api/groups/c847b801-fa6e-4408-a87b-de5eb074ae4a/files? [32m200[0m 1ms
+<-- GET /api/groups/c847b801-fa6e-4408-a87b-de5eb074ae4a/agents
+--> GET /api/groups/c847b801-fa6e-4408-a87b-de5eb074ae4a/messages?limit=50 [32m200[0m 1ms
+--> GET /api/groups/c847b801-fa6e-4408-a87b-de5eb074ae4a/agents [32m200[0m 1ms
+<-- GET /api/status
+--> GET /api/status [32m200[0m 0ms
+<-- GET /api/tasks
+--> GET /api/tasks [32m200[0m 1ms
+<-- POST /api/messages
+[messages] startQuery {
+  userId: '8d48ec6e-810f-4c97-b179-c41bd0836db2',
+  chatJid: 'c847b801-fa6e-4408-a87b-de5eb074ae4a',
+  sessionId: '1fe1dcfd-1e50-418e-a514-aa30565feeaa',
+  promptLength: 14
+}
+[claude-session] querySession start {
+  sessionId: '1fe1dcfd-1e50-418e-a514-aa30565feeaa',
+  baseUrl: 'http://127.0.0.1:3456',
+  model: 'claude-sonnet-4-20250514',
+  hasAuth: true
+}
+--> POST /api/messages [32m200[0m 4ms
+[claude-session] calling claudeQuery with prompt length 14
+[claude-session] spawnClaudeCodeProcess node [
+  '/Users/dingxue/Documents/claude/claw/node_modules/@anthropic-ai/claude-agent-sdk/cli.js',
+  '--output-format',
+  'stream-json',
+  '--verbose',
+  '--input-format'
+]
+[claude-session] spawn stdout: {"type":"control_response","response":{"subtype":"success","request_id":"wrpvl4b6qa","response":{"commands":[{"name":"compact","description":"Clear conversation history but keep a summary in context. Optional: /compact [instructions for summarization]","argumentHint":"<optional custom summarization instructions>"},{"name":"context","description":"Show current context usage","argumentHint":""},{"name":"cost","description":"Show the total cost and duration of the current session","argumentHint":""
+[claude-session] spawn stdout: {"type":"system","subtype":"init","cwd":"/Users/dingxue/Documents/claude/claw/data/sessions/8d48ec6e-810f-4c97-b179-c41bd0836db2/c847b801-fa6e-4408-a87b-de5eb074ae4a/1fe1dcfd-1e50-418e-a514-aa30565feeaa","session_id":"9a631039-15f5-4e2c-9047-fd2a89fdb28b","tools":["Task","TaskOutput","Bash","Glob","Grep","ExitPlanMode","Read","Edit","Write","NotebookEdit","WebFetch","TodoWrite","WebSearch","KillShell","AskUserQuestion","Skill","EnterPlanMode","LSP"],"mcp_servers":[],"model":"claude-sonnet-4-2025
+[claude-session] stream message system init
+[messages] stream event system init
+<-- GET /api/groups/c847b801-fa6e-4408-a87b-de5eb074ae4a/messages?limit=50&after=2026-04-04T14%3A58%3A23.352Z
+--> GET /api/groups/c847b801-fa6e-4408-a87b-de5eb074ae4a/messages?limit=50&after=2026-04-04T14%3A58%3A23.352Z [32m200[0m 1ms
+[claude-session] spawn stdout: {"type":"assistant","message":{"id":"msg_mock_001","type":"message","role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"你好！这是来自 Playwright 自动化测试的模拟回复。整个聊天 → Agent 调度 → Claude SDK query → 回复用户的链路已成功打通。"}],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":12,"output_tokens":80},"context_management":null},"parent_tool_use_id":null,"session_id":"9a631039-15f5-4e2c-9047-fd2a89fdb28b","uuid":"4ad49a09-d1af-4dec-a7fb-fc1d30d27166"}
+
+[claude-session] stream message assistant 
+[messages] stream event assistant 
+[claude-session] spawn stdout: {"type":"result","subtype":"success","is_error":false,"duration_ms":2469,"duration_api_ms":636,"num_turns":1,"result":"你好！这是来自 Playwright 自动化测试的模拟回复。整个聊天 → Agent 调度 → Claude SDK query → 回复用户的链路已成功打通。","session_id":"9a631039-15f5-4e2c-9047-fd2a89fdb28b","total_cost_usd":0.0012360000000000001,"usage":{"input_tokens":12,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":80,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_cr
+[claude-session] stream message result success
+[claude-session] spawn exit { code: 0, signal: null }
+[messages] stream event complete 
+[messages] saving assistant message, length 80
+<-- GET /api/groups/c847b801-fa6e-4408-a87b-de5eb074ae4a/files?path=%2F
+--> GET /api/groups/c847b801-fa6e-4408-a87b-de5eb074ae4a/files?path=%2F [32m200[0m 1ms
+<-- GET /api/groups/c847b801-fa6e-4408-a87b-de5eb074ae4a/messages?limit=50&after=2026-04-04T14%3A58%3A26.771Z
+--> GET /api/groups/c847b801-fa6e-4408-a87b-de5eb074ae4a/messages?limit=50&after=2026-04-04T14%3A58%3A26.771Z [32m200[0m 1ms
+11:10:52 PM [tsx] change in ./src/services/claude-session.service.ts Restarting...
+11:10:57 PM [tsx] Process didn't exit in 5s. Force killing...
+11:12:13 PM [tsx] Previous process hasn't exited yet. Force killing...
+11:12:18 PM [tsx] Process didn't exit in 5s. Force killing...
+11:12:33 PM [tsx] Previous process hasn't exited yet. Force killing...
+11:12:38 PM [tsx] Process didn't exit in 5s. Force killing...
+11:12:43 PM [tsx] Previous process hasn't exited yet. Force killing...
+11:12:48 PM [tsx] Process didn't exit in 5s. Force killing...
+11:13:36 PM [tsx] Previous process hasn't exited yet. Force killing...
+11:13:41 PM [tsx] Process didn't exit in 5s. Force killing...
+11:24:35 PM [tsx] change in ./src/db.ts Process hasn't exited. Killing process...
+11:29:58 PM [tsx] change in ./src/services/ws.service.ts Process hasn't exited. Killing process...
+11:30:16 PM [tsx] change in ./src/routes/messages.ts Process hasn't exited. Killing process...
+11:31:02 PM [tsx] change in ./src/routes/groups.ts Process hasn't exited. Killing process...
+11:31:29 PM [tsx] change in ./src/index.ts Process hasn't exited. Killing process...
+11:41:15 PM [tsx] change in ./src/db.ts Process hasn't exited. Killing process...
+11:43:52 PM [tsx] change in ./src/services/claude-session.service.ts Process hasn't exited. Killing process...
+11:47:48 PM [tsx] change in ./src/routes/messages.ts Process hasn't exited. Killing process...
+11:48:14 PM [tsx] change in ./src/services/ws.service.ts Process hasn't exited. Killing process...
+11:54:48 PM [tsx] Previous process hasn't exited yet. Force killing...
+11:54:53 PM [tsx] Process didn't exit in 5s. Force killing...
+11:56:37 PM [tsx] change in ./src/services/claude-session.service.ts Process hasn't exited. Killing process...
+11:57:04 PM [tsx] change in ./src/services/workspace-isolator/crun.ts Process hasn't exited. Killing process...
+11:57:10 PM [tsx] change in ./src/services/workspace-isolator/sandbox-exec.ts Process hasn't exited. Killing process...

@@ -1,0 +1,22 @@
+{
+  "name": "@claw/web-adapter",
+  "version": "1.0.0",
+  "description": "HappyClaw Web 前端适配器 - 对接 Claw 后端 API",
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "lint": "eslint . --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "zustand": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0"
+  }
+}

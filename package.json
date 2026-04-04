@@ -1,0 +1,48 @@
+{
+  "name": "claw",
+  "version": "1.0.0",
+  "description": "Claude Code Multi-User Platform - Dockerless Edition",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/seed.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0",
+    "@hono/node-server": "^1.13.8",
+    "axios": "^1.8.4",
+    "bcryptjs": "^3.0.2",
+    "better-sqlite3": "^12.0.0",
+    "dotenv": "^16.4.7",
+    "form-data": "^4.0.2",
+    "glob": "^11.0.1",
+    "hono": "^4.7.5",
+    "jose": "^6.0.10",
+    "mime-types": "^3.0.1",
+    "node-pty": "^1.0.0",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
+    "qrcode": "^1.5.4",
+    "uuid": "^11.1.0",
+    "ws": "^8.18.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/mime-types": "^2.1.4",
+    "@types/node": "^22.13.14",
+    "@types/qrcode": "^1.5.5",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.18.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "zustand": "^5.0.12"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
