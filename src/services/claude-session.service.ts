@@ -1,8 +1,8 @@
-import { mkdirSync, rmSync, existsSync, copyFileSync, readdirSync, readFileSync } from 'fs';
+import { mkdirSync, rmSync, existsSync, copyFileSync, readdirSync, readFileSync, cpSync } from 'fs';
 import { resolve, join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { appConfig } from '../config.js';
-import { sessionDb, messageDb } from '../db.js';
+import { sessionDb, messageDb, groupDb } from '../db.js';
 import type { ISessionInfo, IStreamEvent } from '../types.js';
 import { getIsolator } from './workspace-isolator/factory.js';
 import * as processRegistry from './process-registry.js';
@@ -243,6 +243,42 @@ export function abortQuery(userId: string, workspace: string, sessionId: string)
 }
 
 // Query Claude with streaming
+function syncSkillsToSession(userId: string, workspace: string, sessionConfigDir: string): void {
+  const sessionSkillsDir = resolve(sessionConfigDir, 'skills');
+  mkdirSync(sessionSkillsDir, { recursive: true });
+
+  // Sync user-level skills
+  const userSkillsDir = resolve(appConfig.dataDir, 'skills', userId);
+  if (existsSync(userSkillsDir)) {
+    for (const entry of readdirSync(userSkillsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const src = join(userSkillsDir, entry.name);
+      const dest = join(sessionSkillsDir, entry.name);
+      if (existsSync(dest)) {
+        rmSync(dest, { recursive: true, force: true });
+      }
+      cpSync(src, dest, { recursive: true });
+    }
+  }
+
+  // Sync workspace-level skills
+  const group = groupDb.findById(workspace);
+  if (group) {
+    const workspaceSkillsDir = resolve(appConfig.paths.sessions, group.folder || group.id, '.claude', 'skills');
+    if (existsSync(workspaceSkillsDir)) {
+      for (const entry of readdirSync(workspaceSkillsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const src = join(workspaceSkillsDir, entry.name);
+        const dest = join(sessionSkillsDir, entry.name);
+        if (existsSync(dest)) {
+          rmSync(dest, { recursive: true, force: true });
+        }
+        cpSync(src, dest, { recursive: true });
+      }
+    }
+  }
+}
+
 export async function* querySession({
   userId,
   workspace,
@@ -283,7 +319,9 @@ export async function* querySession({
 
   // Ensure directories exist
   mkdirSync(absWorkDir, { recursive: true });
+  mkdirSync(absConfigDir, { recursive: true });
   mkdirSync(absTmpDir, { recursive: true });
+  syncSkillsToSession(userId, workspace, absConfigDir);
 
   // Create abort controller
   const abortController = new AbortController();

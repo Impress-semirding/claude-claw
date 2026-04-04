@@ -1,0 +1,13 @@
+Database initialized
+Sessions loaded from database
+🚀 Server running on http://localhost:3000
+📁 Data directory: /Users/dingxue/Documents/claude/claw/data
+🔧 Claude base directory: /Users/dingxue/Documents/claude/claw/data/sessions
+<-- POST /api/auth/login
+--> POST /api/auth/login [32m200[0m 92ms
+<-- POST /api/skills/install
+[ws] client connected 8d48ec6e-810f-4c97-b179-c41bd0836db2 role= admin totalClients= 1
+--> POST /api/skills/install [31m500[0m 60s
+<-- GET /api/skills
+--> GET /api/skills [32m200[0m 2ms
+Cleaned up 1 idle sessions

@@ -1,7 +1,6 @@
-import { Hono } from 'hono';
-import { serve } from '@hono/node-server';
-import { cors } from 'hono/cors';
-import { logger } from 'hono/logger';
+import Fastify from 'fastify';
+import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import { resolve } from 'path';
 import { mkdirSync } from 'fs';
 import { config } from 'dotenv';
@@ -48,136 +47,31 @@ import type { WsMessageIn } from './types.js';
 import type { WsClientInfo } from './services/ws.service.js';
 import { wsSendMessageHandler } from './routes/messages.js';
 
-// Create app
-const app = new Hono();
-
-// Middleware
-app.use(
-  '*',
-  cors({
-    origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', '*'],
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-    exposeHeaders: ['Content-Length', 'X-Request-Id'],
-    credentials: true,
-    maxAge: 86400,
-  })
-);
-app.use('*', logger());
-
-// Health check
-app.get('/health', (c) => {
-  return c.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    version: '1.0.0',
-  });
+// Create Fastify instance
+const app = Fastify({
+  logger: {
+    level: 'info',
+  },
 });
-
-// Public routes
-app.route('/api/auth', authRoutes);
-
-// Protected routes
-app.use('/api/claude/*', authMiddleware);
-app.route('/api/claude', claudeRoutes);
-
-app.use('/api/mcp/*', authMiddleware, adminMiddleware);
-app.route('/api/mcp', mcpRoutes);
-
-// Groups routes
-app.route('/api/groups', groupsRoutes);
-
-// Messages routes
-app.route('/api/messages', messagesRoutes);
-
-// Agent definitions routes
-app.route('/api/agent-definitions', agentDefinitionsRoutes);
-
-// Skills routes
-app.route('/api/skills', skillsRoutes);
-
-// Tasks routes
-app.route('/api/tasks', tasksRoutes);
-
-// Files routes (nested under groups)
-app.route('/api/groups/:jid/files', filesRoutes);
-
-// Agent routes (nested under groups)
-app.route('/api/groups', agentsRoutes);
-
-// Workspace config routes (nested under groups)
-app.route('/api/groups', workspaceConfigRoutes);
-
-// Browse routes
-app.route('/api/browse', browseRoutes);
-
-// Bug report routes
-app.route('/api/bug-report', bugReportRoutes);
-
-// Config routes
-app.route('/api/config', configRoutes);
-
-// Status routes
-app.route('/api/status', statusRoutes);
-
-// Admin routes
-app.route('/api/admin', adminRoutes);
-
-// MCP Servers routes
-app.route('/api/mcp-servers', mcpServersRoutes);
-
-// Billing routes
-app.route('/api/billing', billingRoutes);
-
-// Usage routes
-app.route('/api/usage', usageRoutes);
-
-// Docker routes
-app.route('/api/docker', dockerRoutes);
-
-// Memory routes
-app.route('/api/memory', memoryRoutes);
-
-// Admin stats (legacy)
-app.get('/api/admin/stats', authMiddleware, adminMiddleware, async (c) => {
-  return c.json({
-    success: true,
-    data: {
-      uptime: process.uptime(),
-      memory: process.memoryUsage(),
-      version: '1.0.0',
-    },
-  });
-});
-
-// Error handler
-app.onError((err, c) => {
-  console.error('Error:', err);
-  return c.json(
-    {
-      success: false,
-      error: err.message || 'Internal server error',
-    },
-    500
-  );
-});
-
-// Not found handler
-app.notFound((c) => {
-  return c.json(
-    {
-      success: false,
-      error: 'Not found',
-    },
-    404
-  );
-});
-
-// Initialize application
-let httpServer: ReturnType<typeof serve> | null = null;
 
 async function init() {
   try {
+    // Register plugins
+    await app.register(cors, {
+      origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', '*'],
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+      exposedHeaders: ['Content-Length', 'X-Request-Id'],
+      credentials: true,
+      maxAge: 86400,
+    });
+
+    await app.register(multipart, {
+      limits: {
+        fileSize: 50 * 1024 * 1024, // 50MB
+      },
+    });
+
     // Ensure directories exist
     mkdirSync(resolve(appConfig.claude.baseDir), { recursive: true });
     mkdirSync(resolve(appConfig.dataDir), { recursive: true });
@@ -203,22 +97,132 @@ async function init() {
       }
     }, 60000); // Every minute
 
+    // Health check
+    app.get('/health', async (_request, reply) => {
+      return reply.send({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        version: '1.0.0',
+      });
+    });
+
+    // Public routes
+    await app.register(authRoutes, { prefix: '/api/auth' });
+
+    // Protected routes
+    await app.register(claudeRoutes, { prefix: '/api/claude' });
+    app.addHook('onRequest', async (request, reply) => {
+      if (request.url.startsWith('/api/claude')) {
+        await authMiddleware(request, reply);
+      }
+    });
+
+    await app.register(mcpRoutes, { prefix: '/api/mcp' });
+    app.addHook('onRequest', async (request, reply) => {
+      if (request.url.startsWith('/api/mcp')) {
+        await authMiddleware(request, reply);
+        await adminMiddleware(request, reply);
+      }
+    });
+
+    // Groups routes
+    await app.register(groupsRoutes, { prefix: '/api/groups' });
+
+    // Messages routes
+    await app.register(messagesRoutes, { prefix: '/api/messages' });
+
+    // Agent definitions routes
+    await app.register(agentDefinitionsRoutes, { prefix: '/api/agent-definitions' });
+
+    // Skills routes
+    await app.register(skillsRoutes, { prefix: '/api/skills' });
+
+    // Tasks routes
+    await app.register(tasksRoutes, { prefix: '/api/tasks' });
+
+    // Files routes (nested under groups)
+    await app.register(filesRoutes, { prefix: '/api/groups/:jid/files' });
+
+    // Agent routes (nested under groups)
+    await app.register(agentsRoutes, { prefix: '/api/groups' });
+
+    // Workspace config routes (nested under groups)
+    await app.register(workspaceConfigRoutes, { prefix: '/api/groups' });
+
+    // Browse routes
+    await app.register(browseRoutes, { prefix: '/api/browse' });
+
+    // Bug report routes
+    await app.register(bugReportRoutes, { prefix: '/api/bug-report' });
+
+    // Config routes
+    await app.register(configRoutes, { prefix: '/api/config' });
+
+    // Status routes
+    await app.register(statusRoutes, { prefix: '/api/status' });
+
+    // Admin routes
+    await app.register(adminRoutes, { prefix: '/api/admin' });
+
+    // MCP Servers routes
+    await app.register(mcpServersRoutes, { prefix: '/api/mcp-servers' });
+
+    // Billing routes
+    await app.register(billingRoutes, { prefix: '/api/billing' });
+
+    // Usage routes
+    await app.register(usageRoutes, { prefix: '/api/usage' });
+
+    // Docker routes
+    await app.register(dockerRoutes, { prefix: '/api/docker' });
+
+    // Memory routes
+    await app.register(memoryRoutes, { prefix: '/api/memory' });
+
+    // Admin stats (legacy)
+    app.get('/api/admin/stats', { preHandler: [authMiddleware, adminMiddleware] }, async (_request, reply) => {
+      return reply.send({
+        success: true,
+        data: {
+          uptime: process.uptime(),
+          memory: process.memoryUsage(),
+          version: '1.0.0',
+        },
+      });
+    });
+
+    // Error handler
+    app.setErrorHandler((error, _request, reply) => {
+      console.error('Error:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      return reply.status(500).send({
+        success: false,
+        error: message || 'Internal server error',
+      });
+    });
+
+    // Not found handler
+    app.setNotFoundHandler((_request, reply) => {
+      return reply.status(404).send({
+        success: false,
+        error: 'Not found',
+      });
+    });
+
     // Start server
     const port = appConfig.port;
-    httpServer = serve(
-      {
-        fetch: app.fetch,
-        port,
-      },
-      (info) => {
-        console.log(`🚀 Server running on http://localhost:${info.port}`);
-        console.log(`📁 Data directory: ${resolve(appConfig.dataDir)}`);
-        console.log(`🔧 Claude base directory: ${resolve(appConfig.claude.baseDir)}`);
-      }
-    );
+    await app.ready();
+    await app.listen({ port, host: '0.0.0.0' });
+    console.log(`🚀 Server running on http://localhost:${port}`);
+    console.log(`📁 Data directory: ${resolve(appConfig.dataDir)}`);
+    console.log(`🔧 Claude base directory: ${resolve(appConfig.claude.baseDir)}`);
 
-    // Setup WebSocket
-    setupWebSocket(httpServer);
+    // Setup WebSocket on the raw HTTP server
+    const server = app.server;
+    if (server) {
+      setupWebSocket(server);
+    }
+
     setWsMessageHandler(async (client: WsClientInfo, msg: WsMessageIn) => {
       console.log('[ws-handler] received', msg.type, 'chatJid=', msg.chatJid, 'contentLength=', msg.content?.length);
       if (msg.type === 'send_message') {
@@ -255,19 +259,15 @@ async function init() {
 }
 
 // Handle graceful shutdown
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   console.log('\nShutting down gracefully...');
-  if (httpServer) {
-    httpServer.close();
-  }
+  await app.close();
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   console.log('\nShutting down gracefully...');
-  if (httpServer) {
-    httpServer.close();
-  }
+  await app.close();
   process.exit(0);
 });
 

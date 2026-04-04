@@ -1,180 +1,178 @@
-import { Hono } from 'hono';
+import type { FastifyInstance } from 'fastify';
 import { authMiddleware } from './auth.js';
 import { agentDb, groupDb } from '../db.js';
 import { randomUUID } from 'crypto';
 
-const agents = new Hono();
+export default async function agentsRoutes(fastify: FastifyInstance) {
+  // GET /api/groups/:jid/agents - 获取群组的 Agent 列表
+  fastify.get('/:jid/agents', { preHandler: authMiddleware }, async (request, reply) => {
+    try {
+      const jid = (request.params as any).jid as string;
+      const group = groupDb.findById(jid);
+      if (!group) return reply.status(404).send({ error: 'Group not found' });
 
-// GET /api/groups/:jid/agents - 获取群组的 Agent 列表
-agents.get('/:jid/agents', authMiddleware, async (c) => {
-  try {
-    const jid = c.req.param('jid');
-    const group = groupDb.findById(jid);
-    if (!group) return c.json({ error: 'Group not found' }, 404);
+      const user = request.user as { userId: string };
+      const members = group.members || [];
+      if (group.ownerId !== user.userId && !members.includes(user.userId)) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
 
-    const user = c.get('user') as { userId: string };
-    const members = group.members || [];
-    if (group.ownerId !== user.userId && !members.includes(user.userId)) {
-      return c.json({ error: 'Forbidden' }, 403);
+      const agentsList = agentDb.findByGroup(jid).map((a) => ({
+        id: a.id,
+        name: a.name,
+        prompt: a.prompt,
+        status: a.status || 'idle',
+        kind: a.kind || 'conversation',
+        created_at: new Date(a.createdAt).toISOString(),
+        updated_at: new Date(a.updatedAt).toISOString(),
+      }));
+
+      return reply.send({ agents: agentsList });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to load agents' });
     }
+  });
 
-    const agentsList = agentDb.findByGroup(jid).map((a) => ({
-      id: a.id,
-      name: a.name,
-      prompt: a.prompt,
-      status: a.status || 'idle',
-      kind: a.kind || 'conversation',
-      created_at: new Date(a.createdAt).toISOString(),
-      updated_at: new Date(a.updatedAt).toISOString(),
-    }));
+  // POST /api/groups/:jid/agents - 创建 Agent
+  fastify.post('/:jid/agents', { preHandler: authMiddleware }, async (request, reply) => {
+    try {
+      const jid = (request.params as any).jid as string;
+      const group = groupDb.findById(jid);
+      if (!group) return reply.status(404).send({ error: 'Group not found' });
 
-    return c.json({ agents: agentsList });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to load agents' }, 500);
-  }
-});
+      const user = request.user as { userId: string };
+      const members = group.members || [];
+      if (group.ownerId !== user.userId && !members.includes(user.userId)) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
 
-// POST /api/groups/:jid/agents - 创建 Agent
-agents.post('/:jid/agents', authMiddleware, async (c) => {
-  try {
-    const jid = c.req.param('jid');
-    const group = groupDb.findById(jid);
-    if (!group) return c.json({ error: 'Group not found' }, 404);
+      const body = request.body as any;
+      const agent = agentDb.create({
+        id: randomUUID(),
+        groupId: jid,
+        name: body.name,
+        prompt: body.prompt || '',
+        status: 'idle',
+        kind: body.kind || 'conversation',
+      });
 
-    const user = c.get('user') as { userId: string };
-    const members = group.members || [];
-    if (group.ownerId !== user.userId && !members.includes(user.userId)) {
-      return c.json({ error: 'Forbidden' }, 403);
+      return reply.status(201).send({
+        success: true,
+        agent: {
+          id: agent.id,
+          name: agent.name,
+          prompt: agent.prompt,
+          status: agent.status,
+          kind: agent.kind,
+          created_at: new Date(agent.createdAt).toISOString(),
+        },
+      });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to create agent' });
     }
+  });
 
-    const body = await c.req.json();
-    const agent = agentDb.create({
-      id: randomUUID(),
-      groupId: jid,
-      name: body.name,
-      prompt: body.prompt || '',
-      status: 'idle',
-      kind: body.kind || 'conversation',
-    });
+  // PATCH /api/groups/:jid/agents/:agentId - 更新 Agent
+  fastify.patch('/:jid/agents/:agentId', { preHandler: authMiddleware }, async (request, reply) => {
+    try {
+      const jid = (request.params as any).jid as string;
+      const agentId = (request.params as any).agentId as string;
+      const group = groupDb.findById(jid);
+      if (!group) return reply.status(404).send({ error: 'Group not found' });
 
-    return c.json({
-      success: true,
-      agent: {
-        id: agent.id,
-        name: agent.name,
-        prompt: agent.prompt,
-        status: agent.status,
-        kind: agent.kind,
-        created_at: new Date(agent.createdAt).toISOString(),
-      },
-    }, 201);
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to create agent' }, 500);
-  }
-});
+      const user = request.user as { userId: string };
+      const members = group.members || [];
+      if (group.ownerId !== user.userId && !members.includes(user.userId)) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
 
-// PATCH /api/groups/:jid/agents/:agentId - 更新 Agent
-agents.patch('/:jid/agents/:agentId', authMiddleware, async (c) => {
-  try {
-    const jid = c.req.param('jid');
-    const agentId = c.req.param('agentId');
-    const group = groupDb.findById(jid);
-    if (!group) return c.json({ error: 'Group not found' }, 404);
+      const existing = agentDb.findById(agentId);
+      if (!existing || existing.groupId !== jid) {
+        return reply.status(404).send({ error: 'Agent not found' });
+      }
 
-    const user = c.get('user') as { userId: string };
-    const members = group.members || [];
-    if (group.ownerId !== user.userId && !members.includes(user.userId)) {
-      return c.json({ error: 'Forbidden' }, 403);
+      const body = request.body as any;
+      agentDb.update(agentId, {
+        name: body.name,
+        prompt: body.prompt,
+        status: body.status,
+        kind: body.kind,
+      });
+
+      return reply.send({ success: true });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to update agent' });
     }
+  });
 
-    const existing = agentDb.findById(agentId);
-    if (!existing || existing.groupId !== jid) {
-      return c.json({ error: 'Agent not found' }, 404);
+  // DELETE /api/groups/:jid/agents/:agentId - 删除 Agent
+  fastify.delete('/:jid/agents/:agentId', { preHandler: authMiddleware }, async (request, reply) => {
+    try {
+      const jid = (request.params as any).jid as string;
+      const agentId = (request.params as any).agentId as string;
+      const group = groupDb.findById(jid);
+      if (!group) return reply.status(404).send({ error: 'Group not found' });
+
+      const user = request.user as { userId: string };
+      const members = group.members || [];
+      if (group.ownerId !== user.userId && !members.includes(user.userId)) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      const existing = agentDb.findById(agentId);
+      if (!existing || existing.groupId !== jid) {
+        return reply.status(404).send({ error: 'Agent not found' });
+      }
+
+      agentDb.delete(agentId);
+      return reply.send({ success: true });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to delete agent' });
     }
+  });
 
-    const body = await c.req.json();
-    agentDb.update(agentId, {
-      name: body.name,
-      prompt: body.prompt,
-      status: body.status,
-      kind: body.kind,
-    });
-
-    return c.json({ success: true });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to update agent' }, 500);
-  }
-});
-
-// DELETE /api/groups/:jid/agents/:agentId - 删除 Agent
-agents.delete('/:jid/agents/:agentId', authMiddleware, async (c) => {
-  try {
-    const jid = c.req.param('jid');
-    const agentId = c.req.param('agentId');
-    const group = groupDb.findById(jid);
-    if (!group) return c.json({ error: 'Group not found' }, 404);
-
-    const user = c.get('user') as { userId: string };
-    const members = group.members || [];
-    if (group.ownerId !== user.userId && !members.includes(user.userId)) {
-      return c.json({ error: 'Forbidden' }, 403);
+  // GET /api/groups/:jid/im-groups - 获取 IM 群组列表 (stub)
+  fastify.get('/:jid/im-groups', { preHandler: authMiddleware }, async (request, reply) => {
+    try {
+      return reply.send({ groups: [] });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to load IM groups' });
     }
+  });
 
-    const existing = agentDb.findById(agentId);
-    if (!existing || existing.groupId !== jid) {
-      return c.json({ error: 'Agent not found' }, 404);
+  // PUT /api/groups/:jid/agents/:agentId/im-binding - 绑定 Agent 到 IM (stub)
+  fastify.put('/:jid/agents/:agentId/im-binding', { preHandler: authMiddleware }, async (request, reply) => {
+    try {
+      return reply.send({ success: true });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to bind agent' });
     }
+  });
 
-    agentDb.delete(agentId);
-    return c.json({ success: true });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to delete agent' }, 500);
-  }
-});
+  // DELETE /api/groups/:jid/agents/:agentId/im-binding - 解绑 Agent IM (stub)
+  fastify.delete('/:jid/agents/:agentId/im-binding', { preHandler: authMiddleware }, async (request, reply) => {
+    try {
+      return reply.send({ success: true });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to unbind agent' });
+    }
+  });
 
-// GET /api/groups/:jid/im-groups - 获取 IM 群组列表 (stub)
-agents.get('/:jid/im-groups', authMiddleware, async (c) => {
-  try {
-    return c.json({ groups: [] });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to load IM groups' }, 500);
-  }
-});
+  // PUT /api/groups/:jid/im-binding - 绑定群组到 IM (stub)
+  fastify.put('/:jid/im-binding', { preHandler: authMiddleware }, async (request, reply) => {
+    try {
+      return reply.send({ success: true });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to bind group' });
+    }
+  });
 
-// PUT /api/groups/:jid/agents/:agentId/im-binding - 绑定 Agent 到 IM (stub)
-agents.put('/:jid/agents/:agentId/im-binding', authMiddleware, async (c) => {
-  try {
-    return c.json({ success: true });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to bind agent' }, 500);
-  }
-});
-
-// DELETE /api/groups/:jid/agents/:agentId/im-binding - 解绑 Agent IM (stub)
-agents.delete('/:jid/agents/:agentId/im-binding', authMiddleware, async (c) => {
-  try {
-    return c.json({ success: true });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to unbind agent' }, 500);
-  }
-});
-
-// PUT /api/groups/:jid/im-binding - 绑定群组到 IM (stub)
-agents.put('/:jid/im-binding', authMiddleware, async (c) => {
-  try {
-    return c.json({ success: true });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to bind group' }, 500);
-  }
-});
-
-// DELETE /api/groups/:jid/im-binding/:imJid - 解绑群组 IM (stub)
-agents.delete('/:jid/im-binding/:imJid', authMiddleware, async (c) => {
-  try {
-    return c.json({ success: true });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to unbind group' }, 500);
-  }
-});
-
-export default agents;
+  // DELETE /api/groups/:jid/im-binding/:imJid - 解绑群组 IM (stub)
+  fastify.delete('/:jid/im-binding/:imJid', { preHandler: authMiddleware }, async (request, reply) => {
+    try {
+      return reply.send({ success: true });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to unbind group' });
+    }
+  });
+}

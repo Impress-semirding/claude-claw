@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import {
   registerUser,
@@ -14,8 +14,6 @@ import type { IAuthToken } from '../services/auth.service.js';
 import { resolve } from 'path';
 import { writeFileSync, mkdirSync, createReadStream, existsSync } from 'fs';
 import { appConfig } from '../config.js';
-
-const auth = new Hono();
 
 // Register schema
 const registerSchema = z.object({
@@ -101,417 +99,373 @@ function clearSessionCookie(_c: any): string {
 }
 
 // Auth middleware - cookie or Bearer
-export async function authMiddleware(c: any, next: any) {
+export async function authMiddleware(request: FastifyRequest, reply: FastifyReply) {
   let token: string | null = null;
 
-  const cookie = c.req.header('Cookie') || '';
+  const cookie = request.headers.cookie || '';
   const sessionMatch = cookie.match(/session=([^;]+)/);
   if (sessionMatch) {
     token = sessionMatch[1];
   }
 
   if (!token) {
-    const authHeader = c.req.header('Authorization');
+    const authHeader = request.headers.authorization;
     if (authHeader?.startsWith('Bearer ')) {
       token = authHeader.slice(7);
     }
   }
 
   if (!token) {
-    return c.json({ error: 'Unauthorized' }, 401);
+    reply.status(401).send({ error: 'Unauthorized' });
+    return;
   }
 
   const payload = await verifyToken(token);
   if (!payload) {
-    return c.json({ error: 'Invalid token' }, 401);
+    reply.status(401).send({ error: 'Invalid token' });
+    return;
   }
 
-  c.set('user', payload);
-  c.set('sessionId', token);
-  await next();
+  request.user = payload;
+  request.sessionId = token;
 }
 
 // Admin middleware
-export async function adminMiddleware(c: any, next: any) {
-  const user = c.get('user') as IAuthToken;
+export async function adminMiddleware(request: FastifyRequest, reply: FastifyReply) {
+  const user = request.user as IAuthToken;
   if (!user || user.role !== 'admin') {
-    return c.json({ error: 'Forbidden' }, 403);
+    reply.status(403).send({ error: 'Forbidden' });
+    return;
   }
-  await next();
 }
 
-// Status endpoint
-auth.get('/status', async (c) => {
-  try {
-    const users = userDb.findAll();
-    return c.json({ initialized: users.length > 0 });
-  } catch {
-    return c.json({ initialized: true });
-  }
-});
-
-// Setup endpoint
-auth.post('/setup', async (c) => {
-  try {
-    const body = await c.req.json();
-    const data = setupSchema.parse(body);
-
-    const existingUsers = userDb.findAll();
-    if (existingUsers.length > 0) {
-      return c.json({ error: 'System already initialized' }, 403);
+export default async function authRoutes(fastify: FastifyInstance) {
+  // Status endpoint
+  fastify.get('/status', async (_request, reply) => {
+    try {
+      const users = userDb.findAll();
+      return reply.send({ initialized: users.length > 0 });
+    } catch {
+      return reply.send({ initialized: true });
     }
+  });
 
-    const user = await registerUser(data.username, data.password, 'Admin', 'admin');
-    const { generateToken } = await import('../services/auth.service.js');
-    const token = await generateToken(user);
+  // Setup endpoint
+  fastify.post('/setup', async (request, reply) => {
+    try {
+      const body = request.body as any;
+      const data = setupSchema.parse(body);
 
-    return new Response(
-      JSON.stringify({
+      const existingUsers = userDb.findAll();
+      if (existingUsers.length > 0) {
+        return reply.status(403).send({ error: 'System already initialized' });
+      }
+
+      const user = await registerUser(data.username, data.password, 'Admin', 'admin');
+      const { generateToken } = await import('../services/auth.service.js');
+      const token = await generateToken(user);
+
+      reply.header('Set-Cookie', setSessionCookie(null, token));
+      return reply.status(201).send({
         success: true,
         user: toUserPublic(user),
         setupStatus: buildSetupStatus(),
-      }),
-      {
-        status: 201,
-        headers: {
-          'Content-Type': 'application/json',
-          'Set-Cookie': setSessionCookie(c, token),
-        },
-      }
-    );
-  } catch (error) {
-    return c.json(
-      { error: error instanceof Error ? error.message : 'Setup failed' },
-      400
-    );
-  }
-});
-
-// Register status endpoint
-auth.get('/register/status', async (c) => {
-  try {
-    const users = userDb.findAll();
-    if (users.length === 0) {
-      return c.json({ allowRegistration: false, requireInviteCode: true });
+      });
+    } catch (error) {
+      return reply.status(400).send(
+        { error: error instanceof Error ? error.message : 'Setup failed' }
+      );
     }
-    return c.json({ allowRegistration: true, requireInviteCode: false });
-  } catch {
-    return c.json({ allowRegistration: true, requireInviteCode: false });
-  }
-});
+  });
 
-// Register endpoint
-auth.post('/register', async (c) => {
-  try {
-    const body = await c.req.json();
-    const data = registerSchema.parse(body);
-
-    // Validate invite code if required
-    const users = userDb.findAll();
-    if (users.length > 0 && data.invite_code) {
-      const invite = inviteCodeDb.findByCode(data.invite_code);
-      if (!invite || invite.usedCount >= invite.maxUses || (invite.expiresAt && invite.expiresAt < Date.now())) {
-        return c.json({ error: 'Invalid or expired invite code' }, 400);
+  // Register status endpoint
+  fastify.get('/register/status', async (_request, reply) => {
+    try {
+      const users = userDb.findAll();
+      if (users.length === 0) {
+        return reply.send({ allowRegistration: false, requireInviteCode: true });
       }
-      inviteCodeDb.use(data.invite_code);
+      return reply.send({ allowRegistration: true, requireInviteCode: false });
+    } catch {
+      return reply.send({ allowRegistration: true, requireInviteCode: false });
     }
+  });
 
-    const user = await registerUser(data.username, data.password, data.display_name || data.username);
+  // Register endpoint
+  fastify.post('/register', async (request, reply) => {
+    try {
+      const body = request.body as any;
+      const data = registerSchema.parse(body);
 
-    const { generateToken } = await import('../services/auth.service.js');
-    const token = await generateToken(user);
-
-    logAuthEvent('register_success', user.id, `Registered as ${user.role}`, getClientIp(c), c.req.header('user-agent'));
-
-    return new Response(
-      JSON.stringify({ success: true, user: toUserPublic(user), token }),
-      {
-        status: 201,
-        headers: {
-          'Content-Type': 'application/json',
-          'Set-Cookie': setSessionCookie(c, token),
-        },
+      // Validate invite code if required
+      const users = userDb.findAll();
+      if (users.length > 0 && data.invite_code) {
+        const invite = inviteCodeDb.findByCode(data.invite_code);
+        if (!invite || invite.usedCount >= invite.maxUses || (invite.expiresAt && invite.expiresAt < Date.now())) {
+          return reply.status(400).send({ error: 'Invalid or expired invite code' });
+        }
+        inviteCodeDb.use(data.invite_code);
       }
-    );
-  } catch (error) {
-    return c.json(
-      { error: error instanceof Error ? error.message : 'Registration failed' },
-      400
-    );
-  }
-});
 
-// Login endpoint
-auth.post('/login', async (c) => {
-  try {
-    const body = await c.req.json();
-    const data = loginSchema.parse(body);
+      const user = await registerUser(data.username, data.password, data.display_name || data.username);
 
-    const { user, token } = await loginUser(
-      data.username,
-      data.password,
-      getClientIp(c),
-      c.req.header('user-agent')
-    );
+      const { generateToken } = await import('../services/auth.service.js');
+      const token = await generateToken(user);
 
-    logAuthEvent('login_success', user.id, undefined, getClientIp(c), c.req.header('user-agent'));
+      logAuthEvent('register_success', user.id, `Registered as ${user.role}`, getClientIp(request as any), request.headers['user-agent'] as string);
 
-    const userPublic = toUserPublic(user);
-    const setupStatus = user.role === 'admin' ? buildSetupStatus() : undefined;
+      reply.header('Set-Cookie', setSessionCookie(null, token));
+      return reply.status(201).send({ success: true, user: toUserPublic(user), token });
+    } catch (error) {
+      return reply.status(400).send(
+        { error: error instanceof Error ? error.message : 'Registration failed' }
+      );
+    }
+  });
 
-    return new Response(
-      JSON.stringify({
+  // Login endpoint
+  fastify.post('/login', async (request, reply) => {
+    try {
+      const body = request.body as any;
+      const data = loginSchema.parse(body);
+
+      const { user, token } = await loginUser(
+        data.username,
+        data.password,
+        getClientIp(request as any),
+        request.headers['user-agent'] as string
+      );
+
+      logAuthEvent('login_success', user.id, undefined, getClientIp(request as any), request.headers['user-agent'] as string);
+
+      const userPublic = toUserPublic(user);
+      const setupStatus = user.role === 'admin' ? buildSetupStatus() : undefined;
+
+      reply.header('Set-Cookie', setSessionCookie(null, token));
+      return reply.send({
         success: true,
         user: userPublic,
         token,
         setupStatus,
-      }),
-      {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Set-Cookie': setSessionCookie(c, token),
-        },
-      }
-    );
-  } catch (error) {
-    logAuthEvent('login_failed', undefined, error instanceof Error ? error.message : 'Invalid credentials', getClientIp(c), c.req.header('user-agent'));
-    return c.json(
-      { error: error instanceof Error ? error.message : 'Invalid credentials' },
-      401
-    );
-  }
-});
-
-// Logout endpoint
-auth.post('/logout', authMiddleware, async (c) => {
-  const token = (c as any).get('sessionId') as string;
-  const user = c.get('user') as IAuthToken;
-  logoutUser(token);
-  if (user) {
-    logAuthEvent('logout', user.userId, undefined, getClientIp(c), c.req.header('user-agent'));
-  }
-  return new Response(JSON.stringify({ success: true }), {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/json',
-      'Set-Cookie': clearSessionCookie(c),
-    },
-  });
-});
-
-// Me endpoint
-auth.get('/me', authMiddleware, async (c) => {
-  try {
-    const authUser = c.get('user') as IAuthToken;
-    const fullUser = userDb.findById(authUser.userId);
-
-    if (!fullUser) {
-      return c.json({ error: 'User not found' }, 404);
-    }
-
-    const userPublic = toUserPublic(fullUser);
-    const appearance = {
-      appName: 'HappyClaw',
-      aiName: fullUser.aiName || 'Claude',
-      aiAvatarEmoji: fullUser.aiAvatarEmoji || '🤖',
-      aiAvatarColor: fullUser.aiAvatarColor || '#0d9488',
-    };
-
-    if (fullUser.role === 'admin') {
-      return c.json({
-        user: userPublic,
-        appearance,
-        setupStatus: buildSetupStatus(),
       });
+    } catch (error) {
+      logAuthEvent('login_failed', undefined, error instanceof Error ? error.message : 'Invalid credentials', getClientIp(request as any), request.headers['user-agent'] as string);
+      return reply.status(401).send(
+        { error: error instanceof Error ? error.message : 'Invalid credentials' }
+      );
     }
-
-    return c.json({ user: userPublic, appearance });
-  } catch (error) {
-    return c.json(
-      { error: error instanceof Error ? error.message : 'Failed to get user' },
-      500
-    );
-  }
-});
-
-// Profile update endpoint
-auth.put('/profile', authMiddleware, async (c) => {
-  try {
-    const body = await c.req.json();
-    const data = profileUpdateSchema.parse(body);
-
-    const user = c.get('user') as IAuthToken;
-
-    const updates: any = {};
-    if (data.display_name !== undefined) updates.name = data.display_name;
-    if (data.avatar_emoji !== undefined) updates.avatarEmoji = data.avatar_emoji;
-    if (data.avatar_color !== undefined) updates.avatarColor = data.avatar_color;
-    if (data.avatar_url !== undefined) updates.avatarUrl = data.avatar_url;
-    if (data.ai_name !== undefined) updates.aiName = data.ai_name;
-    if (data.ai_avatar_emoji !== undefined) updates.aiAvatarEmoji = data.ai_avatar_emoji;
-    if (data.ai_avatar_color !== undefined) updates.aiAvatarColor = data.ai_avatar_color;
-    if (data.ai_avatar_url !== undefined) updates.aiAvatarUrl = data.ai_avatar_url;
-
-    if (Object.keys(updates).length > 0) {
-      userDb.update(user.userId, updates);
-    }
-
-    logAuthEvent('profile_updated', user.userId, undefined, getClientIp(c), c.req.header('user-agent'));
-
-    const updated = userDb.findById(user.userId)!;
-    return c.json({ success: true, user: toUserPublic(updated) });
-  } catch (error) {
-    return c.json(
-      { error: error instanceof Error ? error.message : 'Update failed' },
-      400
-    );
-  }
-});
-
-// Change password endpoint
-auth.put('/password', authMiddleware, async (c) => {
-  try {
-    const body = await c.req.json();
-    const data = changePasswordSchema.parse(body);
-
-    const user = c.get('user') as IAuthToken;
-    const fullUser = userDb.findById(user.userId);
-
-    if (!fullUser) {
-      return c.json({ error: 'User not found' }, 404);
-    }
-
-    const { verifyPassword, hashPassword, generateToken } = await import('../services/auth.service.js');
-    const { db } = await import('../db.js');
-    const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(user.userId) as { password_hash: string } | undefined;
-
-    if (!row || !row.password_hash) {
-      return c.json({ error: 'User not found' }, 404);
-    }
-
-    const match = await verifyPassword(data.current_password, row.password_hash);
-    if (!match) {
-      return c.json({ error: 'Current password is incorrect' }, 401);
-    }
-
-    const newHash = await hashPassword(data.new_password);
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, user.userId);
-
-    // Revoke other sessions
-    const currentToken = (c as any).get('sessionId') as string;
-    userSessionDb.revokeByUser(user.userId, currentToken);
-
-    const newToken = await generateToken(fullUser);
-    createUserSession(user.userId, newToken, getClientIp(c), c.req.header('user-agent'));
-
-    logAuthEvent('password_changed', user.userId, undefined, getClientIp(c), c.req.header('user-agent'));
-
-    const updated = userDb.findById(user.userId)!;
-    return new Response(
-      JSON.stringify({ success: true, user: toUserPublic(updated) }),
-      {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Set-Cookie': setSessionCookie(c, newToken),
-        },
-      }
-    );
-  } catch (error) {
-    return c.json(
-      { error: error instanceof Error ? error.message : 'Password change failed' },
-      400
-    );
-  }
-});
-
-// Sessions endpoint
-auth.get('/sessions', authMiddleware, (c) => {
-  const user = c.get('user') as IAuthToken;
-  const sessions = userSessionDb.findByUser(user.userId);
-
-  return c.json({
-    sessions: sessions.map((s) => ({
-      shortId: s.token.slice(0, 8),
-      ip_address: s.ipAddress || '127.0.0.1',
-      user_agent: s.userAgent || null,
-      created_at: new Date(s.createdAt).toISOString(),
-      last_active_at: new Date(s.lastActiveAt).toISOString(),
-      is_current: s.token === ((c as any).get('sessionId') as string),
-    })),
   });
-});
 
-// Delete session endpoint
-auth.delete('/sessions/:id', authMiddleware, (c) => {
-  const user = c.get('user') as IAuthToken;
-  const sessions = userSessionDb.findByUser(user.userId);
-  const target = sessions.find((s) => s.token.slice(0, 8) === c.req.param('id'));
-  if (target) {
-    userSessionDb.revoke(target.id);
-  }
-  return c.json({ success: true });
-});
-
-// Avatar upload endpoint
-auth.post('/avatar', authMiddleware, async (c) => {
-  try {
-    const user = c.get('user') as IAuthToken;
-    const body = await c.req.parseBody();
-    const file = body.avatar as File;
-    const target = (c.req.query('target') as 'user' | 'ai') || 'ai';
-
-    if (!file) {
-      return c.json({ error: 'No file provided' }, 400);
+  // Logout endpoint
+  fastify.post('/logout', { preHandler: authMiddleware }, async (request, reply) => {
+    const token = (request as any).sessionId as string;
+    const user = request.user as IAuthToken;
+    logoutUser(token);
+    if (user) {
+      logAuthEvent('logout', user.userId, undefined, getClientIp(request as any), request.headers['user-agent'] as string);
     }
+    reply.header('Set-Cookie', clearSessionCookie(null));
+    return reply.send({ success: true });
+  });
 
-    const avatarDir = resolve(appConfig.dataDir, 'avatars');
-    mkdirSync(avatarDir, { recursive: true });
+  // Me endpoint
+  fastify.get('/me', { preHandler: authMiddleware }, async (request, reply) => {
+    try {
+      const authUser = request.user as IAuthToken;
+      const fullUser = userDb.findById(authUser.userId);
 
-    const ext = file.name.split('.').pop() || 'png';
-    const fileName = `${user.userId}_${target}_${Date.now()}.${ext}`;
-    const filePath = resolve(avatarDir, fileName);
+      if (!fullUser) {
+        return reply.status(404).send({ error: 'User not found' });
+      }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    writeFileSync(filePath, buffer);
+      const userPublic = toUserPublic(fullUser);
+      const appearance = {
+        appName: 'HappyClaw',
+        aiName: fullUser.aiName || 'Claude',
+        aiAvatarEmoji: fullUser.aiAvatarEmoji || '🤖',
+        aiAvatarColor: fullUser.aiAvatarColor || '#0d9488',
+      };
 
-    const avatarUrl = `/api/auth/avatars/${fileName}`;
-    const updates: any = {};
-    if (target === 'user') {
-      updates.avatarUrl = avatarUrl;
-    } else {
-      updates.aiAvatarUrl = avatarUrl;
+      if (fullUser.role === 'admin') {
+        return reply.send({
+          user: userPublic,
+          appearance,
+          setupStatus: buildSetupStatus(),
+        });
+      }
+
+      return reply.send({ user: userPublic, appearance });
+    } catch (error) {
+      return reply.status(500).send(
+        { error: error instanceof Error ? error.message : 'Failed to get user' }
+      );
     }
-    userDb.update(user.userId, updates);
+  });
 
-    const updated = userDb.findById(user.userId)!;
-    return c.json({ success: true, avatarUrl, user: toUserPublic(updated) });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Upload failed' }, 500);
-  }
-});
+  // Profile update endpoint
+  fastify.put('/profile', { preHandler: authMiddleware }, async (request, reply) => {
+    try {
+      const body = request.body as any;
+      const data = profileUpdateSchema.parse(body);
 
-// Serve avatar files
-auth.get('/avatars/:filename', async (c) => {
-  try {
-    const filename = c.req.param('filename');
-    const filePath = resolve(appConfig.dataDir, 'avatars', filename);
+      const user = request.user as IAuthToken;
 
-    if (!existsSync(filePath)) {
-      return c.json({ error: 'Avatar not found' }, 404);
+      const updates: any = {};
+      if (data.display_name !== undefined) updates.name = data.display_name;
+      if (data.avatar_emoji !== undefined) updates.avatarEmoji = data.avatar_emoji;
+      if (data.avatar_color !== undefined) updates.avatarColor = data.avatar_color;
+      if (data.avatar_url !== undefined) updates.avatarUrl = data.avatar_url;
+      if (data.ai_name !== undefined) updates.aiName = data.ai_name;
+      if (data.ai_avatar_emoji !== undefined) updates.aiAvatarEmoji = data.ai_avatar_emoji;
+      if (data.ai_avatar_color !== undefined) updates.aiAvatarColor = data.ai_avatar_color;
+      if (data.ai_avatar_url !== undefined) updates.aiAvatarUrl = data.ai_avatar_url;
+
+      if (Object.keys(updates).length > 0) {
+        userDb.update(user.userId, updates);
+      }
+
+      logAuthEvent('profile_updated', user.userId, undefined, getClientIp(request as any), request.headers['user-agent'] as string);
+
+      const updated = userDb.findById(user.userId)!;
+      return reply.send({ success: true, user: toUserPublic(updated) });
+    } catch (error) {
+      return reply.status(400).send(
+        { error: error instanceof Error ? error.message : 'Update failed' }
+      );
     }
+  });
 
-    const ext = filename.split('.').pop() || 'png';
-    const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'gif' ? 'image/gif' : 'image/png';
+  // Change password endpoint
+  fastify.put('/password', { preHandler: authMiddleware }, async (request, reply) => {
+    try {
+      const body = request.body as any;
+      const data = changePasswordSchema.parse(body);
 
-    const stream = createReadStream(filePath);
-    return new Response(stream as any, {
-      headers: { 'Content-Type': mimeType },
+      const user = request.user as IAuthToken;
+      const fullUser = userDb.findById(user.userId);
+
+      if (!fullUser) {
+        return reply.status(404).send({ error: 'User not found' });
+      }
+
+      const { verifyPassword, hashPassword, generateToken } = await import('../services/auth.service.js');
+      const { db } = await import('../db.js');
+      const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(user.userId) as { password_hash: string } | undefined;
+
+      if (!row || !row.password_hash) {
+        return reply.status(404).send({ error: 'User not found' });
+      }
+
+      const match = await verifyPassword(data.current_password, row.password_hash);
+      if (!match) {
+        return reply.status(401).send({ error: 'Current password is incorrect' });
+      }
+
+      const newHash = await hashPassword(data.new_password);
+      db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, user.userId);
+
+      // Revoke other sessions
+      const currentToken = (request as any).sessionId as string;
+      userSessionDb.revokeByUser(user.userId, currentToken);
+
+      const newToken = await generateToken(fullUser);
+      createUserSession(user.userId, newToken, getClientIp(request as any), request.headers['user-agent'] as string);
+
+      logAuthEvent('password_changed', user.userId, undefined, getClientIp(request as any), request.headers['user-agent'] as string);
+
+      const updated = userDb.findById(user.userId)!;
+      reply.header('Set-Cookie', setSessionCookie(null, newToken));
+      return reply.send({ success: true, user: toUserPublic(updated) });
+    } catch (error) {
+      return reply.status(400).send(
+        { error: error instanceof Error ? error.message : 'Password change failed' }
+      );
+    }
+  });
+
+  // Sessions endpoint
+  fastify.get('/sessions', { preHandler: authMiddleware }, (request, reply) => {
+    const user = request.user as IAuthToken;
+    const sessions = userSessionDb.findByUser(user.userId);
+
+    return reply.send({
+      sessions: sessions.map((s) => ({
+        shortId: s.token.slice(0, 8),
+        ip_address: s.ipAddress || '127.0.0.1',
+        user_agent: s.userAgent || null,
+        created_at: new Date(s.createdAt).toISOString(),
+        last_active_at: new Date(s.lastActiveAt).toISOString(),
+        is_current: s.token === ((request as any).sessionId as string),
+      })),
     });
-  } catch {
-    return c.json({ error: 'Avatar not found' }, 404);
-  }
-});
+  });
 
-export default auth;
+  // Delete session endpoint
+  fastify.delete('/sessions/:id', { preHandler: authMiddleware }, (request, reply) => {
+    const user = request.user as IAuthToken;
+    const sessions = userSessionDb.findByUser(user.userId);
+    const target = sessions.find((s) => s.token.slice(0, 8) === (request.params as any).id);
+    if (target) {
+      userSessionDb.revoke(target.id);
+    }
+    return reply.send({ success: true });
+  });
+
+  // Avatar upload endpoint
+  fastify.post('/avatar', { preHandler: authMiddleware }, async (request, reply) => {
+    try {
+      const user = request.user as IAuthToken;
+      const data = await request.file();
+      const target = ((request.query as any).target as 'user' | 'ai') || 'ai';
+
+      if (!data) {
+        return reply.status(400).send({ error: 'No file provided' });
+      }
+
+      const avatarDir = resolve(appConfig.dataDir, 'avatars');
+      mkdirSync(avatarDir, { recursive: true });
+
+      const fileName = data.filename;
+      const ext = fileName.split('.').pop() || 'png';
+      const outFileName = `${user.userId}_${target}_${Date.now()}.${ext}`;
+      const filePath = resolve(avatarDir, outFileName);
+
+      const buffer = await data.toBuffer();
+      writeFileSync(filePath, buffer);
+
+      const avatarUrl = `/api/auth/avatars/${outFileName}`;
+      const updates: any = {};
+      if (target === 'user') {
+        updates.avatarUrl = avatarUrl;
+      } else {
+        updates.aiAvatarUrl = avatarUrl;
+      }
+      userDb.update(user.userId, updates);
+
+      const updated = userDb.findById(user.userId)!;
+      return reply.send({ success: true, avatarUrl, user: toUserPublic(updated) });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Upload failed' });
+    }
+  });
+
+  // Serve avatar files
+  fastify.get('/avatars/:filename', async (request, reply) => {
+    try {
+      const filename = (request.params as any).filename as string;
+      const filePath = resolve(appConfig.dataDir, 'avatars', filename);
+
+      if (!existsSync(filePath)) {
+        return reply.status(404).send({ error: 'Avatar not found' });
+      }
+
+      const ext = filename.split('.').pop() || 'png';
+      const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'gif' ? 'image/gif' : 'image/png';
+
+      reply.header('Content-Type', mimeType);
+      return reply.send(createReadStream(filePath));
+    } catch {
+      return reply.status(404).send({ error: 'Avatar not found' });
+    }
+  });
+}

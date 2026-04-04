@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import type { FastifyInstance } from 'fastify';
 import { authMiddleware } from './auth.js';
 import { groupDb, sessionDb, messageDb, userDb, groupEnvDb } from '../db.js';
 import { randomUUID } from 'crypto';
@@ -8,8 +8,6 @@ import { appConfig } from '../config.js';
 import { getOrCreateSession } from '../services/claude-session.service.js';
 import { broadcastGroupCreated } from '../services/ws.service.js';
 import * as processRegistry from '../services/process-registry.js';
-
-const groups = new Hono();
 
 // Helper: 转换 Group 为前端格式
 function toGroupInfo(group: any, userId: string): any {
@@ -84,680 +82,680 @@ function toMessage(msg: any): any {
   };
 }
 
-// GET /api/groups - 获取群组列表
-groups.get('/', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
+export default async function groupsRoutes(fastify: FastifyInstance) {
+  // GET /api/groups - 获取群组列表
+  fastify.get('/', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
 
-  try {
-    const allGroups = groupDb.findAll();
-    const userGroups = allGroups.filter(
-      (g) => g.ownerId === user.userId || (g.members || []).includes(user.userId)
-    );
-
-    const groupsMap: Record<string, any> = {};
-    for (const group of userGroups) {
-      groupsMap[group.id] = toGroupInfo(group, user.userId);
-    }
-
-    return c.json({ groups: groupsMap });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to load groups' }, 500);
-  }
-});
-
-// POST /api/groups - 创建群组
-groups.post('/', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
-
-  try {
-    const body = await c.req.json();
-    const name = body.name;
-    if (!name || typeof name !== 'string') {
-      return c.json({ error: 'Name is required' }, 400);
-    }
-
-    const groupId = randomUUID();
-    const folder = `group-${groupId.slice(0, 8)}`;
-    const workDir = resolve(appConfig.paths.sessions, folder);
-
-    // 创建工作目录
-    await mkdir(workDir, { recursive: true });
-
-    const group = groupDb.create({
-      id: groupId,
-      name,
-      description: body.description || '',
-      ownerId: user.userId,
-      members: [],
-      config: body.config || {},
-      folder,
-      isHome: false,
-      pinnedAt: null,
-      executionMode: body.execution_mode || 'host',
-    });
-
-    // 自动创建 session
-    await getOrCreateSession(user.userId, groupId);
-
-    const groupInfo = toGroupInfo(group, user.userId);
-    broadcastGroupCreated(groupId, folder, name, user.userId);
-
-    return c.json({
-      success: true,
-      jid: group.id,
-      group: groupInfo,
-    }, 201);
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to create group' }, 500);
-  }
-});
-
-// GET /api/groups/:jid - 获取群组详情
-groups.get('/:jid', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
-  const jid = c.req.param('jid');
-
-  try {
-    const group = groupDb.findById(jid);
-    if (!group) {
-      return c.json({ error: 'Group not found' }, 404);
-    }
-
-    // 检查权限
-    const members = group.members || [];
-    if (group.ownerId !== user.userId && !members.includes(user.userId)) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
-
-    return c.json({ group: toGroupInfo(group, user.userId) });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to load group' }, 500);
-  }
-});
-
-// PATCH /api/groups/:jid - 更新群组
-groups.patch('/:jid', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
-  const jid = c.req.param('jid');
-
-  try {
-    const group = groupDb.findById(jid);
-    if (!group) {
-      return c.json({ error: 'Group not found' }, 404);
-    }
-
-    // 检查权限（只有 owner 可以修改）
-    if (group.ownerId !== user.userId) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
-
-    const body = await c.req.json();
-    const updates: any = {};
-
-    if (body.name !== undefined) {
-      updates.name = body.name;
-    }
-
-    if (body.description !== undefined) {
-      updates.description = body.description;
-    }
-
-    if (body.pinned_at !== undefined) {
-      updates.pinnedAt = body.pinned_at ? Date.parse(body.pinned_at) || null : null;
-    }
-
-    if (body.execution_mode !== undefined) {
-      updates.executionMode = body.execution_mode;
-    }
-
-    if (body.config !== undefined) {
-      updates.config = { ...group.config, ...body.config };
-    }
-
-    if (Object.keys(updates).length > 0) {
-      groupDb.update(jid, updates);
-    }
-
-    const updated = groupDb.findById(jid)!;
-    return c.json({ success: true, group: toGroupInfo(updated, user.userId) });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to update group' }, 500);
-  }
-});
-
-// DELETE /api/groups/:jid - 删除群组
-groups.delete('/:jid', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
-  const jid = c.req.param('jid');
-
-  try {
-    const group = groupDb.findById(jid);
-    if (!group) {
-      return c.json({ error: 'Group not found' }, 404);
-    }
-
-    // 检查权限
-    if (group.ownerId !== user.userId && user.role !== 'admin') {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
-
-    // 删除关联的 sessions
-    const allSessions = sessionDb.findAll();
-    for (const session of allSessions) {
-      const s = session as any;
-      if (s.workspace === jid) {
-        // 删除 session 的消息
-        messageDb.deleteBySession(s.id);
-        // 删除 session 目录
-        try {
-          await rm(s.workDir as string, { recursive: true, force: true });
-        } catch {
-          // ignore
-        }
-        sessionDb.delete(s.id);
-      }
-    }
-
-    // 删除群组工作目录
-    const workDir = resolve(appConfig.paths.sessions, group.folder || group.id);
     try {
-      await rm(workDir, { recursive: true, force: true });
-    } catch {
-      // ignore
+      const allGroups = groupDb.findAll();
+      const userGroups = allGroups.filter(
+        (g) => g.ownerId === user.userId || (g.members || []).includes(user.userId)
+      );
+
+      const groupsMap: Record<string, any> = {};
+      for (const group of userGroups) {
+        groupsMap[group.id] = toGroupInfo(group, user.userId);
+      }
+
+      return reply.send({ groups: groupsMap });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to load groups' });
     }
+  });
 
-    groupDb.delete(jid);
-    return c.json({ success: true });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to delete group' }, 500);
-  }
-});
+  // POST /api/groups - 创建群组
+  fastify.post('/', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
 
-// GET /api/groups/:jid/messages - 获取消息
-groups.get('/:jid/messages', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
-  const jid = c.req.param('jid');
+    try {
+      const body = request.body as any;
+      const name = body.name;
+      if (!name || typeof name !== 'string') {
+        return reply.status(400).send({ error: 'Name is required' });
+      }
 
-  try {
-    const group = groupDb.findById(jid);
-    if (!group) {
-      return c.json({ error: 'Group not found' }, 404);
-    }
+      const groupId = randomUUID();
+      const folder = `group-${groupId.slice(0, 8)}`;
+      const workDir = resolve(appConfig.paths.sessions, folder);
 
-    // 检查权限
-    if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
+      // 创建工作目录
+      await mkdir(workDir, { recursive: true });
 
-    // 获取查询参数
-    const before = c.req.query('before');
-    const after = c.req.query('after');
-    const limit = parseInt(c.req.query('limit') || '50', 10);
-
-    // 找到该群组的所有 session（不限于当前用户，包含所有成员）
-    const allSessions = sessionDb.findByUser('');
-    const groupSessions = allSessions.filter((s: any) => s.workspace === jid);
-    console.log('[groups/messages] jid=', jid, 'groupSessions=', groupSessions.length, 'after=', after, 'before=', before, 'limit=', limit);
-
-    // 获取所有消息
-    let allMessages: any[] = [];
-    for (const session of groupSessions) {
-      const s = session as any;
-      const msgs = messageDb.findBySession(s.id, 5000);
-      console.log('[groups/messages] session=', s.id, 'msgs=', msgs.length);
-      allMessages = allMessages.concat(msgs.map((m) => ({ ...toMessage(m), chat_jid: jid })));
-    }
-
-    // 按时间排序
-    allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    console.log('[groups/messages] totalMessages=', allMessages.length);
-
-    // 应用过滤
-    if (after) {
-      const beforeFilter = allMessages.length;
-      allMessages = allMessages.filter((m) => new Date(m.timestamp) > new Date(after));
-      console.log('[groups/messages] after filter: before=', beforeFilter, 'after=', allMessages.length);
-    }
-    if (before) {
-      allMessages = allMessages.filter((m) => new Date(m.timestamp) < new Date(before));
-    }
-
-    // 限制数量
-    const hasMore = allMessages.length > limit;
-    const messages = allMessages.slice(-limit);
-    console.log('[groups/messages] returning', messages.length, 'messages, hasMore=', hasMore);
-
-    return c.json({ messages, hasMore });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to load messages' }, 500);
-  }
-});
-
-// DELETE /api/groups/:jid/messages/:id - 删除消息
-groups.delete('/:jid/messages/:id', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
-  const jid = c.req.param('jid');
-
-  try {
-    const group = groupDb.findById(jid);
-    if (!group) {
-      return c.json({ error: 'Group not found' }, 404);
-    }
-
-    // 检查权限
-    if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
-
-    // TODO: 实现消息删除
-    return c.json({ success: true });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to delete message' }, 500);
-  }
-});
-
-// GET /api/groups/:jid/members - 获取成员
-groups.get('/:jid/members', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
-  const jid = c.req.param('jid');
-
-  try {
-    const group = groupDb.findById(jid);
-    if (!group) {
-      return c.json({ error: 'Group not found' }, 404);
-    }
-
-    // 检查权限
-    if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
-
-    // 构建成员列表
-    const members: any[] = [];
-    const joinedAt = toISOString(group.createdAt);
-
-    // 添加 owner
-    const owner = userDb.findById(group.ownerId);
-    if (owner) {
-      members.push({
-        user_id: owner.id,
-        username: owner.email,
-        display_name: owner.name,
-        role: 'owner',
-        joined_at: joinedAt,
+      const group = groupDb.create({
+        id: groupId,
+        name,
+        description: body.description || '',
+        ownerId: user.userId,
+        members: [],
+        config: body.config || {},
+        folder,
+        isHome: false,
+        pinnedAt: null,
+        executionMode: body.execution_mode || 'host',
       });
-    }
 
-    // 添加 members
-    for (const memberId of group.members) {
-      const member = userDb.findById(memberId);
-      if (member) {
+      // 自动创建 session
+      await getOrCreateSession(user.userId, groupId);
+
+      const groupInfo = toGroupInfo(group, user.userId);
+      broadcastGroupCreated(groupId, folder, name, user.userId);
+
+      return reply.status(201).send({
+        success: true,
+        jid: group.id,
+        group: groupInfo,
+      });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to create group' });
+    }
+  });
+
+  // GET /api/groups/:jid - 获取群组详情
+  fastify.get('/:jid', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
+    const jid = (request.params as any).jid as string;
+
+    try {
+      const group = groupDb.findById(jid);
+      if (!group) {
+        return reply.status(404).send({ error: 'Group not found' });
+      }
+
+      // 检查权限
+      const members = group.members || [];
+      if (group.ownerId !== user.userId && !members.includes(user.userId)) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      return reply.send({ group: toGroupInfo(group, user.userId) });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to load group' });
+    }
+  });
+
+  // PATCH /api/groups/:jid - 更新群组
+  fastify.patch('/:jid', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
+    const jid = (request.params as any).jid as string;
+
+    try {
+      const group = groupDb.findById(jid);
+      if (!group) {
+        return reply.status(404).send({ error: 'Group not found' });
+      }
+
+      // 检查权限（只有 owner 可以修改）
+      if (group.ownerId !== user.userId) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      const body = request.body as any;
+      const updates: any = {};
+
+      if (body.name !== undefined) {
+        updates.name = body.name;
+      }
+
+      if (body.description !== undefined) {
+        updates.description = body.description;
+      }
+
+      if (body.pinned_at !== undefined) {
+        updates.pinnedAt = body.pinned_at ? Date.parse(body.pinned_at) || null : null;
+      }
+
+      if (body.execution_mode !== undefined) {
+        updates.executionMode = body.execution_mode;
+      }
+
+      if (body.config !== undefined) {
+        updates.config = { ...group.config, ...body.config };
+      }
+
+      if (Object.keys(updates).length > 0) {
+        groupDb.update(jid, updates);
+      }
+
+      const updated = groupDb.findById(jid)!;
+      return reply.send({ success: true, group: toGroupInfo(updated, user.userId) });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to update group' });
+    }
+  });
+
+  // DELETE /api/groups/:jid - 删除群组
+  fastify.delete('/:jid', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
+    const jid = (request.params as any).jid as string;
+
+    try {
+      const group = groupDb.findById(jid);
+      if (!group) {
+        return reply.status(404).send({ error: 'Group not found' });
+      }
+
+      // 检查权限
+      if (group.ownerId !== user.userId && user.role !== 'admin') {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      // 删除关联的 sessions
+      const allSessions = sessionDb.findAll();
+      for (const session of allSessions) {
+        const s = session as any;
+        if (s.workspace === jid) {
+          // 删除 session 的消息
+          messageDb.deleteBySession(s.id);
+          // 删除 session 目录
+          try {
+            await rm(s.workDir as string, { recursive: true, force: true });
+          } catch {
+            // ignore
+          }
+          sessionDb.delete(s.id);
+        }
+      }
+
+      // 删除群组工作目录
+      const workDir = resolve(appConfig.paths.sessions, group.folder || group.id);
+      try {
+        await rm(workDir, { recursive: true, force: true });
+      } catch {
+        // ignore
+      }
+
+      groupDb.delete(jid);
+      return reply.send({ success: true });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to delete group' });
+    }
+  });
+
+  // GET /api/groups/:jid/messages - 获取消息
+  fastify.get('/:jid/messages', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
+    const jid = (request.params as any).jid as string;
+
+    try {
+      const group = groupDb.findById(jid);
+      if (!group) {
+        return reply.status(404).send({ error: 'Group not found' });
+      }
+
+      // 检查权限
+      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      // 获取查询参数
+      const before = (request.query as any).before as string | undefined;
+      const after = (request.query as any).after as string | undefined;
+      const limit = parseInt((request.query as any).limit || '50', 10);
+
+      // 找到该群组的所有 session（不限于当前用户，包含所有成员）
+      const allSessions = sessionDb.findByUser('');
+      const groupSessions = allSessions.filter((s: any) => s.workspace === jid);
+      console.log('[groups/messages] jid=', jid, 'groupSessions=', groupSessions.length, 'after=', after, 'before=', before, 'limit=', limit);
+
+      // 获取所有消息
+      let allMessages: any[] = [];
+      for (const session of groupSessions) {
+        const s = session as any;
+        const msgs = messageDb.findBySession(s.id, 5000);
+        console.log('[groups/messages] session=', s.id, 'msgs=', msgs.length);
+        allMessages = allMessages.concat(msgs.map((m) => ({ ...toMessage(m), chat_jid: jid })));
+      }
+
+      // 按时间排序
+      allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      console.log('[groups/messages] totalMessages=', allMessages.length);
+
+      // 应用过滤
+      if (after) {
+        const beforeFilter = allMessages.length;
+        allMessages = allMessages.filter((m) => new Date(m.timestamp) > new Date(after));
+        console.log('[groups/messages] after filter: before=', beforeFilter, 'after=', allMessages.length);
+      }
+      if (before) {
+        allMessages = allMessages.filter((m) => new Date(m.timestamp) < new Date(before));
+      }
+
+      // 限制数量
+      const hasMore = allMessages.length > limit;
+      const messages = allMessages.slice(-limit);
+      console.log('[groups/messages] returning', messages.length, 'messages, hasMore=', hasMore);
+
+      return reply.send({ messages, hasMore });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to load messages' });
+    }
+  });
+
+  // DELETE /api/groups/:jid/messages/:id - 删除消息
+  fastify.delete('/:jid/messages/:id', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
+    const jid = (request.params as any).jid as string;
+
+    try {
+      const group = groupDb.findById(jid);
+      if (!group) {
+        return reply.status(404).send({ error: 'Group not found' });
+      }
+
+      // 检查权限
+      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      // TODO: 实现消息删除
+      return reply.send({ success: true });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to delete message' });
+    }
+  });
+
+  // GET /api/groups/:jid/members - 获取成员
+  fastify.get('/:jid/members', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
+    const jid = (request.params as any).jid as string;
+
+    try {
+      const group = groupDb.findById(jid);
+      if (!group) {
+        return reply.status(404).send({ error: 'Group not found' });
+      }
+
+      // 检查权限
+      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      // 构建成员列表
+      const members: any[] = [];
+      const joinedAt = toISOString(group.createdAt);
+
+      // 添加 owner
+      const owner = userDb.findById(group.ownerId);
+      if (owner) {
         members.push({
-          user_id: member.id,
-          username: member.email,
-          display_name: member.name,
-          role: 'member',
+          user_id: owner.id,
+          username: owner.email,
+          display_name: owner.name,
+          role: 'owner',
           joined_at: joinedAt,
         });
       }
+
+      // 添加 members
+      for (const memberId of group.members) {
+        const member = userDb.findById(memberId);
+        if (member) {
+          members.push({
+            user_id: member.id,
+            username: member.email,
+            display_name: member.name,
+            role: 'member',
+            joined_at: joinedAt,
+          });
+        }
+      }
+
+      return reply.send({ members });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to load members' });
     }
+  });
 
-    return c.json({ members });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to load members' }, 500);
-  }
-});
+  // GET /api/groups/:jid/members/search - 搜索可添加用户
+  fastify.get('/:jid/members/search', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
+    const jid = (request.params as any).jid as string;
+    const q = ((request.query as any).q as string) || '';
 
-// GET /api/groups/:jid/members/search - 搜索可添加用户
-groups.get('/:jid/members/search', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
-  const jid = c.req.param('jid');
-  const q = c.req.query('q') || '';
+    try {
+      const group = groupDb.findById(jid);
+      if (!group) {
+        return reply.status(404).send({ error: 'Group not found' });
+      }
 
-  try {
-    const group = groupDb.findById(jid);
-    if (!group) {
-      return c.json({ error: 'Group not found' }, 404);
+      if (group.ownerId !== user.userId) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      const allUsers = userDb.findActive();
+      const existingIds = new Set([group.ownerId, ...group.members]);
+
+      const results = allUsers
+        .filter((u) => !existingIds.has(u.id))
+        .filter((u) => {
+          if (!q) return true;
+          const searchText = `${u.email} ${u.name || ''}`.toLowerCase();
+          return q.toLowerCase().split(/\s+/).every((term) => searchText.includes(term));
+        })
+        .map((u) => ({
+          user_id: u.id,
+          username: u.email,
+          display_name: u.name,
+        }));
+
+      return reply.send({ users: results });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to search users' });
     }
+  });
 
-    if (group.ownerId !== user.userId) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
+  // POST /api/groups/:jid/members - 添加成员
+  fastify.post('/:jid/members', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
+    const jid = (request.params as any).jid as string;
 
-    const allUsers = userDb.findActive();
-    const existingIds = new Set([group.ownerId, ...group.members]);
+    try {
+      const group = groupDb.findById(jid);
+      if (!group) {
+        return reply.status(404).send({ error: 'Group not found' });
+      }
 
-    const results = allUsers
-      .filter((u) => !existingIds.has(u.id))
-      .filter((u) => {
-        if (!q) return true;
-        const searchText = `${u.email} ${u.name || ''}`.toLowerCase();
-        return q.toLowerCase().split(/\s+/).every((term) => searchText.includes(term));
-      })
-      .map((u) => ({
-        user_id: u.id,
-        username: u.email,
-        display_name: u.name,
-      }));
+      // 检查权限（只有 owner 可以添加成员）
+      if (group.ownerId !== user.userId) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
 
-    return c.json({ users: results });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to search users' }, 500);
-  }
-});
+      const body = request.body as any;
+      const userIdToAdd = body.user_id;
 
-// POST /api/groups/:jid/members - 添加成员
-groups.post('/:jid/members', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
-  const jid = c.req.param('jid');
+      if (!userIdToAdd) {
+        return reply.status(400).send({ error: 'user_id is required' });
+      }
 
-  try {
-    const group = groupDb.findById(jid);
-    if (!group) {
-      return c.json({ error: 'Group not found' }, 404);
-    }
+      // 检查用户是否存在
+      const userToAdd = userDb.findById(userIdToAdd);
+      if (!userToAdd) {
+        return reply.status(404).send({ error: 'User not found' });
+      }
 
-    // 检查权限（只有 owner 可以添加成员）
-    if (group.ownerId !== user.userId) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
+      // 检查是否已经是成员
+      if (group.members.includes(userIdToAdd) || group.ownerId === userIdToAdd) {
+        return reply.status(409).send({ error: 'User is already a member' });
+      }
 
-    const body = await c.req.json();
-    const userIdToAdd = body.user_id;
+      // 添加成员
+      const newMembers = [...group.members, userIdToAdd];
+      groupDb.update(jid, { members: newMembers });
 
-    if (!userIdToAdd) {
-      return c.json({ error: 'user_id is required' }, 400);
-    }
-
-    // 检查用户是否存在
-    const userToAdd = userDb.findById(userIdToAdd);
-    if (!userToAdd) {
-      return c.json({ error: 'User not found' }, 404);
-    }
-
-    // 检查是否已经是成员
-    if (group.members.includes(userIdToAdd) || group.ownerId === userIdToAdd) {
-      return c.json({ error: 'User is already a member' }, 409);
-    }
-
-    // 添加成员
-    const newMembers = [...group.members, userIdToAdd];
-    groupDb.update(jid, { members: newMembers });
-
-    // 返回更新后的成员列表
-    const updated = groupDb.findById(jid)!;
-    const members: any[] = [];
-    const owner = userDb.findById(updated.ownerId);
-    if (owner) {
-      members.push({
-        user_id: owner.id,
-        username: owner.email,
-        display_name: owner.name,
-        role: 'owner',
-        joined_at: new Date(updated.createdAt).toISOString(),
-      });
-    }
-    for (const memberId of updated.members) {
-      const member = userDb.findById(memberId);
-      if (member) {
+      // 返回更新后的成员列表
+      const updated = groupDb.findById(jid)!;
+      const members: any[] = [];
+      const owner = userDb.findById(updated.ownerId);
+      if (owner) {
         members.push({
-          user_id: member.id,
-          username: member.email,
-          display_name: member.name,
-          role: 'member',
+          user_id: owner.id,
+          username: owner.email,
+          display_name: owner.name,
+          role: 'owner',
           joined_at: new Date(updated.createdAt).toISOString(),
         });
       }
+      for (const memberId of updated.members) {
+        const member = userDb.findById(memberId);
+        if (member) {
+          members.push({
+            user_id: member.id,
+            username: member.email,
+            display_name: member.name,
+            role: 'member',
+            joined_at: new Date(updated.createdAt).toISOString(),
+          });
+        }
+      }
+
+      return reply.send({ members });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to add member' });
     }
+  });
 
-    return c.json({ members });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to add member' }, 500);
-  }
-});
+  // DELETE /api/groups/:jid/members/:id - 移除成员
+  fastify.delete('/:jid/members/:id', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
+    const jid = (request.params as any).jid as string;
+    const memberId = (request.params as any).id as string;
 
-// DELETE /api/groups/:jid/members/:id - 移除成员
-groups.delete('/:jid/members/:id', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
-  const jid = c.req.param('jid');
-  const memberId = c.req.param('id');
+    try {
+      const group = groupDb.findById(jid);
+      if (!group) {
+        return reply.status(404).send({ error: 'Group not found' });
+      }
 
-  try {
-    const group = groupDb.findById(jid);
-    if (!group) {
-      return c.json({ error: 'Group not found' }, 404);
-    }
+      // 检查权限（只有 owner 可以移除成员，或者成员可以自己退出）
+      if (group.ownerId !== user.userId && memberId !== user.userId) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
 
-    // 检查权限（只有 owner 可以移除成员，或者成员可以自己退出）
-    if (group.ownerId !== user.userId && memberId !== user.userId) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
+      // 不能移除 owner
+      if (memberId === group.ownerId) {
+        return reply.status(400).send({ error: 'Cannot remove owner' });
+      }
 
-    // 不能移除 owner
-    if (memberId === group.ownerId) {
-      return c.json({ error: 'Cannot remove owner' }, 400);
-    }
+      // 移除成员
+      const newMembers = group.members.filter((id: string) => id !== memberId);
+      groupDb.update(jid, { members: newMembers });
 
-    // 移除成员
-    const newMembers = group.members.filter((id) => id !== memberId);
-    groupDb.update(jid, { members: newMembers });
-
-    // 返回更新后的成员列表
-    const updated = groupDb.findById(jid)!;
-    const members: any[] = [];
-    const owner = userDb.findById(updated.ownerId);
-    if (owner) {
-      members.push({
-        user_id: owner.id,
-        username: owner.email,
-        display_name: owner.name,
-        role: 'owner',
-        joined_at: new Date(updated.createdAt).toISOString(),
-      });
-    }
-    for (const mId of updated.members) {
-      const member = userDb.findById(mId);
-      if (member) {
+      // 返回更新后的成员列表
+      const updated = groupDb.findById(jid)!;
+      const members: any[] = [];
+      const owner = userDb.findById(updated.ownerId);
+      if (owner) {
         members.push({
-          user_id: member.id,
-          username: member.email,
-          display_name: member.name,
-          role: 'member',
+          user_id: owner.id,
+          username: owner.email,
+          display_name: owner.name,
+          role: 'owner',
           joined_at: new Date(updated.createdAt).toISOString(),
         });
       }
+      for (const mId of updated.members) {
+        const member = userDb.findById(mId);
+        if (member) {
+          members.push({
+            user_id: member.id,
+            username: member.email,
+            display_name: member.name,
+            role: 'member',
+            joined_at: new Date(updated.createdAt).toISOString(),
+          });
+        }
+      }
+
+      return reply.send({ members });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to remove member' });
     }
+  });
 
-    return c.json({ members });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to remove member' }, 500);
-  }
-});
+  // GET /api/groups/:jid/env - 获取环境变量
+  fastify.get('/:jid/env', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
+    const jid = (request.params as any).jid as string;
 
-// GET /api/groups/:jid/env - 获取环境变量
-groups.get('/:jid/env', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
-  const jid = c.req.param('jid');
+    try {
+      const group = groupDb.findById(jid);
+      if (!group) {
+        return reply.status(404).send({ error: 'Group not found' });
+      }
 
-  try {
-    const group = groupDb.findById(jid);
-    if (!group) {
-      return c.json({ error: 'Group not found' }, 404);
+      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      const env = groupEnvDb.findById(jid) || {};
+      const configEnv = group.config?.env || {};
+      return reply.send({ success: true, env: { ...configEnv, ...env } });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to get env' });
     }
+  });
 
-    if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-      return c.json({ error: 'Forbidden' }, 403);
+  // PUT /api/groups/:jid/env - 更新环境变量
+  fastify.put('/:jid/env', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
+    const jid = (request.params as any).jid as string;
+
+    try {
+      const group = groupDb.findById(jid);
+      if (!group) {
+        return reply.status(404).send({ error: 'Group not found' });
+      }
+
+      if (group.ownerId !== user.userId) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      const body = request.body as any;
+      const env = body.env || {};
+      groupEnvDb.set(jid, env);
+
+      return reply.send({ success: true, env });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to update env' });
     }
+  });
 
-    const env = groupEnvDb.findById(jid) || {};
-    const configEnv = group.config?.env || {};
-    return c.json({ success: true, env: { ...configEnv, ...env } });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to get env' }, 500);
-  }
-});
+  // POST /api/groups/:jid/stop - 停止群组
+  fastify.post('/:jid/stop', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
+    const jid = (request.params as any).jid as string;
 
-// PUT /api/groups/:jid/env - 更新环境变量
-groups.put('/:jid/env', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
-  const jid = c.req.param('jid');
+    try {
+      const group = groupDb.findById(jid);
+      if (!group) {
+        return reply.status(404).send({ error: 'Group not found' });
+      }
 
-  try {
-    const group = groupDb.findById(jid);
-    if (!group) {
-      return c.json({ error: 'Group not found' }, 404);
+      // 检查权限
+      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      // Kill any active isolated processes for this group
+      processRegistry.stopWorkspace(jid, true);
+
+      // 更新所有相关 session 的状态
+      const allSessions = sessionDb.findByUser('');
+      for (const session of allSessions) {
+        const s = session as any;
+        if (s.workspace === jid) {
+          sessionDb.update(s.id, { status: 'idle' });
+        }
+      }
+
+      return reply.send({ success: true });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to stop group' });
     }
+  });
 
-    if (group.ownerId !== user.userId) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
+  // POST /api/groups/:jid/interrupt - 中断查询
+  fastify.post('/:jid/interrupt', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
+    const jid = (request.params as any).jid as string;
 
-    const body = await c.req.json();
-    const env = body.env || {};
-    groupEnvDb.set(jid, env);
+    try {
+      const group = groupDb.findById(jid);
+      if (!group) {
+        return reply.status(404).send({ error: 'Group not found' });
+      }
 
-    return c.json({ success: true, env });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to update env' }, 500);
-  }
-});
+      // 检查权限
+      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
 
-// POST /api/groups/:jid/stop - 停止群组
-groups.post('/:jid/stop', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
-  const jid = c.req.param('jid');
+      // 检查是否有活跃的 session
+      const allSessions = sessionDb.findByUser('');
+      const activeSessions = allSessions.filter((s: any) => s.workspace === jid && s.status === 'running');
 
-  try {
-    const group = groupDb.findById(jid);
-    if (!group) {
-      return c.json({ error: 'Group not found' }, 404);
-    }
+      if (activeSessions.length === 0) {
+        return reply.send({ success: true, interrupted: false });
+      }
 
-    // 检查权限
-    if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
+      // Kill any active isolated processes for this group
+      processRegistry.stopWorkspace(jid, true);
 
-    // Kill any active isolated processes for this group
-    processRegistry.stopWorkspace(jid, true);
-
-    // 更新所有相关 session 的状态
-    const allSessions = sessionDb.findByUser('');
-    for (const session of allSessions) {
-      const s = session as any;
-      if (s.workspace === jid) {
+      // 更新 session 状态
+      for (const session of activeSessions) {
+        const s = session as any;
         sessionDb.update(s.id, { status: 'idle' });
       }
+
+      return reply.send({ success: true, interrupted: true });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to interrupt' });
     }
+  });
 
-    return c.json({ success: true });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to stop group' }, 500);
-  }
-});
+  // POST /api/groups/:jid/reset-session - 重置会话
+  fastify.post('/:jid/reset-session', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
+    const jid = (request.params as any).jid as string;
 
-// POST /api/groups/:jid/interrupt - 中断查询
-groups.post('/:jid/interrupt', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
-  const jid = c.req.param('jid');
-
-  try {
-    const group = groupDb.findById(jid);
-    if (!group) {
-      return c.json({ error: 'Group not found' }, 404);
-    }
-
-    // 检查权限
-    if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
-
-    // 检查是否有活跃的 session
-    const allSessions = sessionDb.findByUser('');
-    const activeSessions = allSessions.filter((s: any) => s.workspace === jid && s.status === 'running');
-
-    if (activeSessions.length === 0) {
-      return c.json({ success: true, interrupted: false });
-    }
-
-    // Kill any active isolated processes for this group
-    processRegistry.stopWorkspace(jid, true);
-
-    // 更新 session 状态
-    for (const session of activeSessions) {
-      const s = session as any;
-      sessionDb.update(s.id, { status: 'idle' });
-    }
-
-    return c.json({ success: true, interrupted: true });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to interrupt' }, 500);
-  }
-});
-
-// POST /api/groups/:jid/reset-session - 重置会话
-groups.post('/:jid/reset-session', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
-  const jid = c.req.param('jid');
-
-  try {
-    const group = groupDb.findById(jid);
-    if (!group) {
-      return c.json({ error: 'Group not found' }, 404);
-    }
-
-    // 检查权限
-    if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
-
-    // 删除该群组的所有消息
-    const allSessions = sessionDb.findByUser('');
-    for (const session of allSessions) {
-      const s = session as any;
-      if (s.workspace === jid) {
-        messageDb.deleteBySession(s.id);
+    try {
+      const group = groupDb.findById(jid);
+      if (!group) {
+        return reply.status(404).send({ error: 'Group not found' });
       }
-    }
 
-    // 添加分隔消息
-    const dividerId = randomUUID();
-
-    return c.json({ success: true, dividerMessageId: dividerId });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to reset session' }, 500);
-  }
-});
-
-// POST /api/groups/:jid/clear-history - 清空历史
-groups.post('/:jid/clear-history', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
-  const jid = c.req.param('jid');
-
-  try {
-    const group = groupDb.findById(jid);
-    if (!group) {
-      return c.json({ error: 'Group not found' }, 404);
-    }
-
-    // 检查权限
-    if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
-
-    // 删除该群组的所有消息
-    const allSessions = sessionDb.findByUser('');
-    for (const session of allSessions) {
-      const s = session as any;
-      if (s.workspace === jid) {
-        messageDb.deleteBySession(s.id);
+      // 检查权限
+      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
+        return reply.status(403).send({ error: 'Forbidden' });
       }
+
+      // 删除该群组的所有消息
+      const allSessions = sessionDb.findByUser('');
+      for (const session of allSessions) {
+        const s = session as any;
+        if (s.workspace === jid) {
+          messageDb.deleteBySession(s.id);
+        }
+      }
+
+      // 添加分隔消息
+      const dividerId = randomUUID();
+
+      return reply.send({ success: true, dividerMessageId: dividerId });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to reset session' });
     }
+  });
 
-    return c.json({ success: true });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to clear history' }, 500);
-  }
-});
+  // POST /api/groups/:jid/clear-history - 清空历史
+  fastify.post('/:jid/clear-history', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
+    const jid = (request.params as any).jid as string;
 
-export default groups;
+    try {
+      const group = groupDb.findById(jid);
+      if (!group) {
+        return reply.status(404).send({ error: 'Group not found' });
+      }
+
+      // 检查权限
+      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      // 删除该群组的所有消息
+      const allSessions = sessionDb.findByUser('');
+      for (const session of allSessions) {
+        const s = session as any;
+        if (s.workspace === jid) {
+          messageDb.deleteBySession(s.id);
+        }
+      }
+
+      return reply.send({ success: true });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to clear history' });
+    }
+  });
+}

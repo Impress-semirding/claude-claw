@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import type { FastifyInstance } from 'fastify';
 import { authMiddleware } from './auth.js';
 import { groupDb, messageDb, mcpServerDb } from '../db.js';
 import { randomUUID } from 'crypto';
@@ -15,8 +15,6 @@ import {
 } from '../services/ws.service.js';
 import type { WsClientInfo } from '../services/ws.service.js';
 import type { IStreamEvent } from '../types.js';
-
-const messages = new Hono();
 
 // Track running queries per group to broadcast runner_state
 const runningQueries = new Map<string, boolean>();
@@ -93,8 +91,6 @@ async function startQuery(
   systemPrompt?: string
 ): Promise<void> {
   if (runningQueries.get(chatJid)) {
-    // Already running - just return, the message was already enqueued via saveUserMessage
-    // In a more advanced system we would queue these messages.
     return;
   }
 
@@ -121,9 +117,7 @@ async function startQuery(
       console.log('[messages] stream event', event.type, event.subtype || '');
       const ev = event as IStreamEvent;
 
-      // Convert to StreamEvent shape expected by frontend
       if (ev.type === 'system' && ev.subtype === 'init') {
-        // init message, no frontend broadcast needed
         continue;
       }
 
@@ -159,7 +153,6 @@ async function startQuery(
 
     console.log('[messages] stream loop ended, assistantText.length=', assistantText.trim().length);
 
-    // Save assistant message if we got any text
     if (assistantText.trim()) {
       console.log('[messages] saving assistant message, length', assistantText.trim().length);
       const assistantMsgId = randomUUID();
@@ -206,45 +199,47 @@ async function startQuery(
   }
 }
 
-// POST /api/messages - 发送消息
-messages.post('/', authMiddleware, async (c) => {
-  const user = c.get('user') as { userId: string; email: string; role: string };
+export default async function messagesRoutes(fastify: FastifyInstance) {
+  // POST /api/messages - 发送消息
+  fastify.post('/', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
 
-  try {
-    const body = await c.req.json();
-    const chatJid = body.chatJid || body.group_jid || body.groupId;
-    const { content, attachments, agentId } = body;
+    try {
+      const body = request.body as any;
+      const chatJid = body.chatJid || body.group_jid || body.groupId;
+      const { content, attachments, agentId } = body;
 
-    if (!chatJid || typeof chatJid !== 'string') {
-      return c.json({ error: 'chatJid is required' }, 400);
+      if (!chatJid || typeof chatJid !== 'string') {
+        return reply.status(400).send({ error: 'chatJid is required' });
+      }
+
+      if (!content || typeof content !== 'string') {
+        return reply.status(400).send({ error: 'content is required' });
+      }
+
+      const result = await handleMessageSend(
+        user.userId,
+        user.email,
+        chatJid,
+        content,
+        attachments,
+        agentId
+      );
+
+      if (!result.ok) {
+        return reply.status(result.status).send({ error: result.error });
+      }
+
+      return reply.send({
+        success: true,
+        messageId: result.messageId,
+        timestamp: result.timestamp,
+      });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to send message' });
     }
-
-    if (!content || typeof content !== 'string') {
-      return c.json({ error: 'content is required' }, 400);
-    }
-
-    const result = await handleMessageSend(
-      user.userId,
-      user.email,
-      chatJid,
-      content,
-      attachments,
-      agentId
-    );
-
-    if (!result.ok) {
-      return c.json({ error: result.error }, result.status as 404 | 403);
-    }
-
-    return c.json({
-      success: true,
-      messageId: result.messageId,
-      timestamp: result.timestamp,
-    });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Failed to send message' }, 500);
-  }
-});
+  });
+}
 
 // WebSocket message handler
 export async function wsSendMessageHandler(
@@ -261,5 +256,3 @@ export async function wsSendMessageHandler(
     msg.agentId
   );
 }
-
-export default messages;

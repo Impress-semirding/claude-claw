@@ -1,27 +1,31 @@
-import type { MiddlewareHandler } from 'hono';
+import type { FastifyRequest, FastifyReply, HookHandlerDoneFunction } from 'fastify';
 import { jwtVerify } from '../services/auth.service.js';
 
-// Extend Hono context type
-declare module 'hono' {
-  interface ContextVariableMap {
+// Extend Fastify request type
+declare module 'fastify' {
+  interface FastifyRequest {
     user: { userId: string; email: string; role: string };
     sessionId?: string;
   }
 }
 
 // JWT authentication middleware - supports Bearer token and cookie
-export const authMiddleware: MiddlewareHandler = async (c, next) => {
+export async function authMiddleware(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  done?: HookHandlerDoneFunction
+): Promise<void> {
   let token: string | null = null;
 
   // Try Authorization header first
-  const authHeader = c.req.header('Authorization');
+  const authHeader = request.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.substring(7);
   }
 
   // Fallback to cookie
   if (!token) {
-    const cookie = c.req.header('Cookie') || '';
+    const cookie = request.headers.cookie || '';
     const sessionMatch = cookie.match(/session=([^;]+)/);
     if (sessionMatch) {
       token = sessionMatch[1];
@@ -29,31 +33,36 @@ export const authMiddleware: MiddlewareHandler = async (c, next) => {
   }
 
   if (!token) {
-    return c.json({ success: false, error: 'Unauthorized' }, 401);
+    reply.status(401).send({ success: false, error: 'Unauthorized' });
+    return;
   }
 
   try {
     const payload = await jwtVerify(token);
     if (!payload) {
-      return c.json({ success: false, error: 'Invalid token' }, 401);
+      reply.status(401).send({ success: false, error: 'Invalid token' });
+      return;
     }
-    c.set('user', payload);
-    c.set('sessionId', token);
-    await next();
-    return;
+    request.user = payload;
+    request.sessionId = token;
+    if (done) done();
   } catch {
-    return c.json({ success: false, error: 'Invalid token' }, 401);
+    reply.status(401).send({ success: false, error: 'Invalid token' });
   }
-};
+}
 
 // Admin role middleware
-export const adminMiddleware: MiddlewareHandler = async (c, next) => {
-  const user = c.get('user');
+export async function adminMiddleware(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  done?: HookHandlerDoneFunction
+): Promise<void> {
+  const user = request.user;
 
   if (user.role !== 'admin') {
-    return c.json({ success: false, error: 'Forbidden: Admin access required' }, 403);
+    reply.status(403).send({ success: false, error: 'Forbidden: Admin access required' });
+    return;
   }
 
-  await next();
-  return;
-};
+  if (done) done();
+}
