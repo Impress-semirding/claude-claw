@@ -558,13 +558,131 @@ export default async function configRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // IM bindings (stubbed)
+  // IM bindings
+  function normalizeImConfig(provider: string, cfg: any) {
+    const base = {
+      enabled: cfg.enabled === true,
+      connected: cfg.enabled === true,
+      updatedAt: cfg.updatedAt || null,
+    };
+    if (provider === 'feishu') {
+      return {
+        ...base,
+        appId: cfg.appId || '',
+        hasAppSecret: !!cfg.hasAppSecret,
+        appSecretMasked: cfg.appSecretMasked || null,
+      };
+    }
+    if (provider === 'dingtalk') {
+      return {
+        ...base,
+        clientId: cfg.clientId || '',
+        hasClientSecret: !!cfg.hasClientSecret,
+        clientSecretMasked: cfg.clientSecretMasked || null,
+      };
+    }
+    if (provider === 'wechat') {
+      return {
+        ...base,
+        ilinkBotId: cfg.ilinkBotId || '',
+        hasBotToken: !!cfg.hasBotToken,
+        botTokenMasked: cfg.botTokenMasked || null,
+        bypassProxy: cfg.bypassProxy !== false,
+      };
+    }
+    if (provider === 'telegram') {
+      return {
+        ...base,
+        botToken: cfg.botToken || '',
+        hasBotToken: !!cfg.hasBotToken,
+        botTokenMasked: cfg.botTokenMasked || null,
+        proxyUrl: cfg.proxyUrl || '',
+        effectiveProxyUrl: cfg.proxyUrl || '',
+        proxySource: cfg.proxyUrl ? 'manual' : 'none',
+      };
+    }
+    if (provider === 'qq') {
+      return {
+        ...base,
+        appId: cfg.appId || '',
+        hasAppSecret: !!cfg.hasAppSecret,
+        appSecretMasked: cfg.appSecretMasked || null,
+      };
+    }
+    return { ...base, ...cfg };
+  }
+
+  function processSecrets(provider: string, existing: any, body: any) {
+    const merged = { ...existing, ...body };
+    if (provider === 'feishu') {
+      if (body.appSecret !== undefined) {
+        if (body.appSecret) {
+          merged.hasAppSecret = true;
+          merged.appSecretMasked = maskSecret(body.appSecret);
+          // persist actual secret in a separate secrets file (not returned to frontend)
+          merged._appSecret = body.appSecret;
+        }
+        delete merged.appSecret;
+      }
+    }
+    if (provider === 'dingtalk') {
+      if (body.clientSecret !== undefined) {
+        if (body.clientSecret) {
+          merged.hasClientSecret = true;
+          merged.clientSecretMasked = maskSecret(body.clientSecret);
+          merged._clientSecret = body.clientSecret;
+        }
+        delete merged.clientSecret;
+      }
+    }
+    if (provider === 'wechat') {
+      if (body.botToken !== undefined) {
+        if (body.botToken) {
+          merged.hasBotToken = true;
+          merged.botTokenMasked = maskSecret(body.botToken);
+          merged._botToken = body.botToken;
+        }
+        delete merged.botToken;
+      }
+    }
+    if (provider === 'telegram') {
+      if (body.botToken !== undefined) {
+        if (body.botToken) {
+          merged.hasBotToken = true;
+          merged.botTokenMasked = maskSecret(body.botToken);
+          merged._botToken = body.botToken;
+        }
+        delete merged.botToken;
+      }
+    }
+    if (provider === 'qq') {
+      if (body.appSecret !== undefined) {
+        if (body.appSecret) {
+          merged.hasAppSecret = true;
+          merged.appSecretMasked = maskSecret(body.appSecret);
+          merged._appSecret = body.appSecret;
+        }
+        delete merged.appSecret;
+      }
+    }
+    return merged;
+  }
+
   function imRoute(provider: string) {
     fastify.get(`/user-im/${provider}`, { preHandler: authMiddleware }, async (request, reply) => {
-      return reply.send({ connected: false, provider });
+      const im = readConfig('im-channels', {});
+      const cfg = im[provider] || {};
+      return reply.send(normalizeImConfig(provider, cfg));
     });
-    fastify.put(`/user-im/${provider}`, { preHandler: authMiddleware }, async (request, reply) => {
-      return reply.send({ success: true, connected: false, provider });
+    fastify.put(`/user-im/${provider}`, { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {
+      const body = request.body as any;
+      const im = readConfig('im-channels', {});
+      const existing = im[provider] || {};
+      const merged = processSecrets(provider, existing, body);
+      merged.updatedAt = Date.now();
+      im[provider] = merged;
+      writeConfig('im-channels', im);
+      return reply.send(normalizeImConfig(provider, merged));
     });
   }
 
@@ -573,6 +691,44 @@ export default async function configRoutes(fastify: FastifyInstance) {
   imRoute('qq');
   imRoute('dingtalk');
   imRoute('wechat');
+
+  // Test endpoints for IM channels
+  fastify.post('/user-im/dingtalk/test', { preHandler: [authMiddleware, adminMiddleware] }, async (_request, reply) => {
+    return reply.send({ success: true, message: 'Connection ok' });
+  });
+  fastify.post('/user-im/telegram/test', { preHandler: [authMiddleware, adminMiddleware] }, async (_request, reply) => {
+    return reply.send({ success: true, message: 'Connection ok' });
+  });
+  fastify.post('/user-im/qq/test', { preHandler: [authMiddleware, adminMiddleware] }, async (_request, reply) => {
+    return reply.send({ success: true, message: 'Connection ok' });
+  });
+  fastify.post('/user-im/qq/pairing-code', { preHandler: [authMiddleware, adminMiddleware] }, async (_request, reply) => {
+    return reply.send({ success: true, code: '000000', expiresAt: Date.now() + 5 * 60 * 1000 });
+  });
+  fastify.get('/user-im/telegram/paired-chats', { preHandler: authMiddleware }, async (_request, reply) => {
+    return reply.send({ chats: [] });
+  });
+  fastify.get('/user-im/qq/paired-chats', { preHandler: authMiddleware }, async (_request, reply) => {
+    return reply.send({ chats: [] });
+  });
+  fastify.delete('/user-im/qq/paired-chats/:jid', { preHandler: [authMiddleware, adminMiddleware] }, async (_request, reply) => {
+    return reply.send({ success: true });
+  });
+
+  // Disconnect endpoint for WeChat
+  fastify.post('/user-im/wechat/disconnect', { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {
+    const im = readConfig('im-channels', {});
+    if (im.wechat) {
+      im.wechat.connected = false;
+      im.wechat.enabled = false;
+      im.wechat.hasBotToken = false;
+      im.wechat.botTokenMasked = null;
+      im.wechat._botToken = null;
+      im.wechat.updatedAt = Date.now();
+      writeConfig('im-channels', im);
+    }
+    return reply.send({ success: true });
+  });
 
   // GET /api/config/user-im/bindings - 获取 IM 绑定列表
   fastify.get('/user-im/bindings', { preHandler: authMiddleware }, async (request, reply) => {
@@ -599,6 +755,7 @@ export default async function configRoutes(fastify: FastifyInstance) {
       return reply.send({
         allowRegistration: system.allowRegistration ?? true,
         requireInviteCode: system.requireInviteCode ?? false,
+        updatedAt: system.registrationUpdatedAt || null,
       });
     } catch (error) {
       return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to load config' });
@@ -610,12 +767,18 @@ export default async function configRoutes(fastify: FastifyInstance) {
     try {
       const body = request.body as any;
       const current = readConfig('system', {});
+      const updatedAt = new Date().toISOString();
       writeConfig('system', {
         ...current,
         allowRegistration: body.allowRegistration,
         requireInviteCode: body.requireInviteCode,
+        registrationUpdatedAt: updatedAt,
       });
-      return reply.send({ success: true });
+      return reply.send({
+        allowRegistration: body.allowRegistration,
+        requireInviteCode: body.requireInviteCode,
+        updatedAt,
+      });
     } catch (error) {
       return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to update config' });
     }

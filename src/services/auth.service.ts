@@ -209,11 +209,13 @@ export async function initAdminUser(): Promise<void> {
   }
 }
 
-// Get client IP from request headers
+// Get client IP from request headers (Fastify or Hono compat)
 export function getClientIp(c: any): string {
-  const forwarded = c.req.header('X-Forwarded-For');
+  // Fastify request has headers object directly
+  const headers = c.headers || (c.req && c.req.headers) || {};
+  const forwarded = headers['x-forwarded-for'];
   if (forwarded) {
     return forwarded.split(',')[0].trim();
   }
-  return c.req.header('X-Real-Ip') || '127.0.0.1';
+  return headers['x-real-ip'] || '127.0.0.1';
 }

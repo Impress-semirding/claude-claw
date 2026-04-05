@@ -5,9 +5,12 @@ import { randomUUID } from 'crypto';
 import { mkdir, rm } from 'fs/promises';
 import { resolve } from 'path';
 import { appConfig } from '../config.js';
-import { getOrCreateSession } from '../services/claude-session.service.js';
+import { getOrCreateSession, destroySession, abortQuery } from '../services/claude-session.service.js';
 import { broadcastGroupCreated } from '../services/ws.service.js';
-import * as processRegistry from '../services/process-registry.js';
+import {
+  stopWorkspace,
+  waitForWorkspaceExit,
+} from '../services/process-registry.js';
 
 // Helper: 转换 Group 为前端格式
 function toGroupInfo(group: any, userId: string): any {
@@ -240,24 +243,43 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
         return reply.status(403).send({ error: 'Forbidden' });
       }
 
+      // 先停止该 workspace 下所有正在运行的隔离进程，并等待它们真正退出
+      stopWorkspace(jid, true);
+      await waitForWorkspaceExit(jid, 3000);
+
       // 删除关联的 sessions
       const allSessions = sessionDb.findAll();
+      const parentDirsToClean = new Set<string>();
       for (const session of allSessions) {
         const s = session as any;
         if (s.workspace === jid) {
+          // 如果有正在运行的查询，先中断
+          abortQuery(s.userId, s.workspace, s.id);
           // 删除 session 的消息
           messageDb.deleteBySession(s.id);
-          // 删除 session 目录
-          try {
-            await rm(s.workDir as string, { recursive: true, force: true });
-          } catch {
-            // ignore
+          // 删除 session 目录（workDir 是相对路径，需解析为绝对路径）
+          if (s.workDir) {
+            try {
+              await rm(resolve(appConfig.claude.baseDir, s.workDir as string), { recursive: true, force: true });
+            } catch {
+              // ignore
+            }
+            parentDirsToClean.add(resolve(appConfig.claude.baseDir, s.userId, jid));
           }
           sessionDb.delete(s.id);
         }
       }
 
-      // 删除群组工作目录
+      // 清理空的 parent 目录（data/sessions/{userId}/{groupId}）
+      for (const parentDir of parentDirsToClean) {
+        try {
+          await rm(parentDir, { recursive: true, force: true });
+        } catch {
+          // ignore if not empty or already gone
+        }
+      }
+
+      // 删除群组工作目录（data/sessions/group-xxxx）
       const workDir = resolve(appConfig.paths.sessions, group.folder || group.id);
       try {
         await rm(workDir, { recursive: true, force: true });
@@ -638,7 +660,7 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
       }
 
       // Kill any active isolated processes for this group
-      processRegistry.stopWorkspace(jid, true);
+      stopWorkspace(jid, true);
 
       // 更新所有相关 session 的状态
       const allSessions = sessionDb.findByUser('');
@@ -680,7 +702,7 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
       }
 
       // Kill any active isolated processes for this group
-      processRegistry.stopWorkspace(jid, true);
+      stopWorkspace(jid, true);
 
       // 更新 session 状态
       for (const session of activeSessions) {
@@ -710,12 +732,17 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
         return reply.status(403).send({ error: 'Forbidden' });
       }
 
-      // 删除该群组的所有消息
+      // 先停止该 workspace 下所有正在运行的隔离进程和中断查询
+      stopWorkspace(jid, true);
       const allSessions = sessionDb.findByUser('');
       for (const session of allSessions) {
         const s = session as any;
         if (s.workspace === jid) {
+          abortQuery(s.userId, s.workspace, s.id);
           messageDb.deleteBySession(s.id);
+          sessionDb.update(s.id, { status: 'destroyed', sdk_session_id: null });
+          // 从内存注册表移除，确保下次 getOrCreateSession 新建 session
+          destroySession(s.userId as string, s.workspace as string, s.id as string);
         }
       }
 

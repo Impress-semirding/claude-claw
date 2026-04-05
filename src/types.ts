@@ -88,6 +88,9 @@ export interface IMcpServer {
   command: string;
   args: string[];
   env?: Record<string, string>;
+  type?: string;
+  url?: string;
+  headers?: Record<string, string>;
   enabled: boolean;
   createdAt: number;
   updatedAt: number;

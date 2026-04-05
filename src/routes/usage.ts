@@ -92,9 +92,9 @@ export default async function usageRoutes(fastify: FastifyInstance) {
     try {
       return reply.send({
         models: [
-          { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4.5', enabled: true },
-          { id: 'claude-opus-4-20250514', name: 'Claude Opus 4.5', enabled: true },
-          { id: 'claude-haiku-4-20251001', name: 'Claude Haiku 4.5', enabled: true },
+          'claude-sonnet-4-20250514',
+          'claude-opus-4-20250514',
+          'claude-haiku-4-20251001',
         ],
       });
     } catch (error) {

@@ -24,7 +24,7 @@ const db: Database.Database = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
 // Schema version for migrations
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 // Initialize schema
 export function initSchema() {
@@ -109,6 +109,9 @@ export function initSchema() {
       command TEXT NOT NULL,
       args TEXT NOT NULL DEFAULT '[]',
       env TEXT,
+      type TEXT DEFAULT 'stdio',
+      url TEXT,
+      headers TEXT,
       enabled INTEGER DEFAULT 1,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
@@ -337,6 +340,12 @@ function runMigrations() {
     // Migration v2: nothing additional, tables created above
   }
 
+  if (currentVersion < 3) {
+    try { db.exec(`ALTER TABLE mcp_servers ADD COLUMN type TEXT DEFAULT 'stdio'`); } catch { /* may already exist */ }
+    try { db.exec(`ALTER TABLE mcp_servers ADD COLUMN url TEXT`); } catch { /* may already exist */ }
+    try { db.exec(`ALTER TABLE mcp_servers ADD COLUMN headers TEXT`); } catch { /* may already exist */ }
+  }
+
   db.prepare('INSERT OR REPLACE INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
 }
 
@@ -376,44 +385,112 @@ export const userDb = {
 
   findByEmail(email: string): IUser | undefined {
     const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as
-      | (IUser & { password_hash?: string })
+      | Record<string, unknown>
       | undefined;
     if (!row) return undefined;
-    const { password_hash, permissions, ...user } = row;
+    const permissions = row.permissions;
     return {
-      ...user,
+      id: row.id as string,
+      email: row.email as string,
+      name: row.name as string,
+      role: row.role as 'admin' | 'user',
+      status: (row.status as IUser['status']) || 'active',
+      avatarEmoji: row.avatar_emoji as string | null | undefined,
+      avatarColor: row.avatar_color as string | null | undefined,
+      avatarUrl: row.avatar_url as string | null | undefined,
+      aiName: row.ai_name as string | null | undefined,
+      aiAvatarEmoji: row.ai_avatar_emoji as string | null | undefined,
+      aiAvatarColor: row.ai_avatar_color as string | null | undefined,
+      aiAvatarUrl: row.ai_avatar_url as string | null | undefined,
       permissions: permissions ? JSON.parse((permissions as unknown) as string) : [],
+      lastLoginAt: row.last_login_at as number | null | undefined,
+      lastActiveAt: row.last_active_at as number | null | undefined,
+      deletedAt: row.deleted_at as number | null | undefined,
+      createdAt: row.created_at as number,
+      updatedAt: row.updated_at as number,
     } as IUser;
   },
 
   findById(id: string): IUser | undefined {
     const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as
-      | (IUser & { password_hash?: string })
+      | Record<string, unknown>
       | undefined;
     if (!row) return undefined;
-    const { password_hash, permissions, ...user } = row;
+    const permissions = row.permissions;
     return {
-      ...user,
+      id: row.id as string,
+      email: row.email as string,
+      name: row.name as string,
+      role: row.role as 'admin' | 'user',
+      status: (row.status as IUser['status']) || 'active',
+      avatarEmoji: row.avatar_emoji as string | null | undefined,
+      avatarColor: row.avatar_color as string | null | undefined,
+      avatarUrl: row.avatar_url as string | null | undefined,
+      aiName: row.ai_name as string | null | undefined,
+      aiAvatarEmoji: row.ai_avatar_emoji as string | null | undefined,
+      aiAvatarColor: row.ai_avatar_color as string | null | undefined,
+      aiAvatarUrl: row.ai_avatar_url as string | null | undefined,
       permissions: permissions ? JSON.parse((permissions as unknown) as string) : [],
+      lastLoginAt: row.last_login_at as number | null | undefined,
+      lastActiveAt: row.last_active_at as number | null | undefined,
+      deletedAt: row.deleted_at as number | null | undefined,
+      createdAt: row.created_at as number,
+      updatedAt: row.updated_at as number,
     } as IUser;
   },
 
   findAll(): IUser[] {
-    const rows = db.prepare('SELECT * FROM users').all() as (IUser & { password_hash?: string })[];
-    return rows.map(({ password_hash, permissions, ...user }) => ({
-      ...user,
-      permissions: permissions ? JSON.parse((permissions as unknown) as string) : [],
-    })) as IUser[];
+    const rows = db.prepare('SELECT * FROM users').all() as Record<string, unknown>[];
+    return rows.map((row) => {
+      const permissions = row.permissions;
+      return {
+        id: row.id as string,
+        email: row.email as string,
+        name: row.name as string,
+        role: row.role as 'admin' | 'user',
+        status: (row.status as IUser['status']) || 'active',
+        avatarEmoji: row.avatar_emoji as string | null | undefined,
+        avatarColor: row.avatar_color as string | null | undefined,
+        avatarUrl: row.avatar_url as string | null | undefined,
+        aiName: row.ai_name as string | null | undefined,
+        aiAvatarEmoji: row.ai_avatar_emoji as string | null | undefined,
+        aiAvatarColor: row.ai_avatar_color as string | null | undefined,
+        aiAvatarUrl: row.ai_avatar_url as string | null | undefined,
+        permissions: permissions ? JSON.parse((permissions as unknown) as string) : [],
+        lastLoginAt: row.last_login_at as number | null | undefined,
+        lastActiveAt: row.last_active_at as number | null | undefined,
+        deletedAt: row.deleted_at as number | null | undefined,
+        createdAt: row.created_at as number,
+        updatedAt: row.updated_at as number,
+      } as IUser;
+    });
   },
 
   findActive(): IUser[] {
-    const rows = db.prepare("SELECT * FROM users WHERE status != 'deleted'").all() as (IUser & {
-      password_hash?: string;
-    })[];
-    return rows.map(({ password_hash, permissions, ...user }) => ({
-      ...user,
-      permissions: permissions ? JSON.parse((permissions as unknown) as string) : [],
-    })) as IUser[];
+    const rows = db.prepare("SELECT * FROM users WHERE status != 'deleted'").all() as Record<string, unknown>[];
+    return rows.map((row) => {
+      const permissions = row.permissions;
+      return {
+        id: row.id as string,
+        email: row.email as string,
+        name: row.name as string,
+        role: row.role as 'admin' | 'user',
+        status: (row.status as IUser['status']) || 'active',
+        avatarEmoji: row.avatar_emoji as string | null | undefined,
+        avatarColor: row.avatar_color as string | null | undefined,
+        avatarUrl: row.avatar_url as string | null | undefined,
+        aiName: row.ai_name as string | null | undefined,
+        aiAvatarEmoji: row.ai_avatar_emoji as string | null | undefined,
+        aiAvatarColor: row.ai_avatar_color as string | null | undefined,
+        aiAvatarUrl: row.ai_avatar_url as string | null | undefined,
+        permissions: permissions ? JSON.parse((permissions as unknown) as string) : [],
+        lastLoginAt: row.last_login_at as number | null | undefined,
+        lastActiveAt: row.last_active_at as number | null | undefined,
+        deletedAt: row.deleted_at as number | null | undefined,
+        createdAt: row.created_at as number,
+        updatedAt: row.updated_at as number,
+      } as IUser;
+    });
   },
 
   update(id: string, data: Partial<IUser>) {
@@ -799,15 +876,18 @@ export const mcpServerDb = {
   create(server: Omit<IMcpServer, 'createdAt' | 'updatedAt'>) {
     const now = Date.now();
     const stmt = db.prepare(`
-      INSERT INTO mcp_servers (id, name, command, args, env, enabled, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO mcp_servers (id, name, command, args, env, type, url, headers, enabled, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       server.id,
       server.name,
       server.command,
-      JSON.stringify(server.args),
+      JSON.stringify(server.args || []),
       server.env ? JSON.stringify(server.env) : null,
+      server.type || 'stdio',
+      server.url || null,
+      server.headers ? JSON.stringify(server.headers) : null,
       server.enabled ? 1 : 0,
       now,
       now
@@ -817,40 +897,64 @@ export const mcpServerDb = {
 
   findById(id: string): IMcpServer | undefined {
     const row = db.prepare('SELECT * FROM mcp_servers WHERE id = ?').get(id) as
-      | (Omit<IMcpServer, 'args' | 'env'> & { args: string; env: string | null })
+      | (Omit<IMcpServer, 'args' | 'env' | 'headers' | 'createdAt' | 'updatedAt'> & { args: string; env: string | null; headers: string | null; created_at: number; updated_at: number })
       | undefined;
     if (!row) return undefined;
     return {
-      ...row,
+      id: row.id,
+      name: row.name,
+      command: row.command,
       args: JSON.parse(row.args),
       env: row.env ? JSON.parse(row.env) : undefined,
+      type: row.type || 'stdio',
+      url: row.url || undefined,
+      headers: row.headers ? JSON.parse(row.headers) : undefined,
       enabled: Boolean(row.enabled),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
     } as IMcpServer;
   },
 
   findAll(): IMcpServer[] {
-    const rows = db.prepare('SELECT * FROM mcp_servers').all() as (Omit<IMcpServer, 'args' | 'env'> & {
+    const rows = db.prepare('SELECT * FROM mcp_servers').all() as (Omit<IMcpServer, 'args' | 'env' | 'headers' | 'createdAt' | 'updatedAt'> & {
       args: string;
       env: string | null;
+      headers: string | null;
+      created_at: number;
+      updated_at: number;
     })[];
     return rows.map((row) => ({
-      ...row,
+      id: row.id,
+      name: row.name,
+      command: row.command,
       args: JSON.parse(row.args),
       env: row.env ? JSON.parse(row.env) : undefined,
+      type: row.type || 'stdio',
+      url: row.url || undefined,
+      headers: row.headers ? JSON.parse(row.headers) : undefined,
       enabled: Boolean(row.enabled),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
     })) as IMcpServer[];
   },
 
   findEnabled(): IMcpServer[] {
     const rows = db.prepare('SELECT * FROM mcp_servers WHERE enabled = 1').all() as (Omit<
       IMcpServer,
-      'args' | 'env'
-    > & { args: string; env: string | null })[];
+      'args' | 'env' | 'headers' | 'createdAt' | 'updatedAt'
+    > & { args: string; env: string | null; headers: string | null; created_at: number; updated_at: number })[];
     return rows.map((row) => ({
-      ...row,
+      id: row.id,
+      name: row.name,
+      command: row.command,
       args: JSON.parse(row.args),
       env: row.env ? JSON.parse(row.env) : undefined,
+      type: row.type || 'stdio',
+      url: row.url || undefined,
+      headers: row.headers ? JSON.parse(row.headers) : undefined,
       enabled: true,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
     })) as IMcpServer[];
   },
 
@@ -860,6 +964,9 @@ export const mcpServerDb = {
     if (data.command !== undefined) updates.command = data.command;
     if (data.args !== undefined) updates.args = JSON.stringify(data.args);
     if (data.env !== undefined) updates.env = data.env ? JSON.stringify(data.env) : null;
+    if (data.type !== undefined) updates.type = data.type;
+    if (data.url !== undefined) updates.url = data.url || null;
+    if (data.headers !== undefined) updates.headers = data.headers ? JSON.stringify(data.headers) : null;
     if (data.enabled !== undefined) updates.enabled = data.enabled ? 1 : 0;
 
     const fields = Object.keys(updates);
@@ -1312,36 +1419,52 @@ export const skillDb = {
 
   findById(id: string): ISkill | undefined {
     const row = db.prepare('SELECT * FROM skills WHERE id = ?').get(id) as
-      | (Omit<ISkill, 'config'> & { config: string | null })
+      | Record<string, unknown>
       | undefined;
     if (!row) return undefined;
     return {
-      ...row,
-      config: row.config ? JSON.parse(row.config) : undefined,
+      id: row.id as string,
+      userId: row.user_id as string,
+      name: row.name as string,
+      description: row.description as string | undefined,
+      source: (row.source as ISkill['source']) || 'user',
       enabled: Boolean(row.enabled),
+      content: row.content as string | undefined,
+      config: row.config ? JSON.parse(row.config as string) : undefined,
+      createdAt: row.created_at as number,
+      updatedAt: row.updated_at as number,
     } as ISkill;
   },
 
   findByUser(userId: string): ISkill[] {
-    const rows = db.prepare('SELECT * FROM skills WHERE user_id = ?').all(userId) as (Omit<
-      ISkill,
-      'config'
-    > & { config: string | null })[];
+    const rows = db.prepare('SELECT * FROM skills WHERE user_id = ?').all(userId) as Record<string, unknown>[];
     return rows.map((row) => ({
-      ...row,
-      config: row.config ? JSON.parse(row.config) : undefined,
+      id: row.id as string,
+      userId: row.user_id as string,
+      name: row.name as string,
+      description: row.description as string | undefined,
+      source: (row.source as ISkill['source']) || 'user',
       enabled: Boolean(row.enabled),
+      content: row.content as string | undefined,
+      config: row.config ? JSON.parse(row.config as string) : undefined,
+      createdAt: row.created_at as number,
+      updatedAt: row.updated_at as number,
     })) as ISkill[];
   },
 
   findAll(): ISkill[] {
-    const rows = db.prepare('SELECT * FROM skills').all() as (Omit<ISkill, 'config'> & {
-      config: string | null;
-    })[];
+    const rows = db.prepare('SELECT * FROM skills').all() as Record<string, unknown>[];
     return rows.map((row) => ({
-      ...row,
-      config: row.config ? JSON.parse(row.config) : undefined,
+      id: row.id as string,
+      userId: row.user_id as string,
+      name: row.name as string,
+      description: row.description as string | undefined,
+      source: (row.source as ISkill['source']) || 'user',
       enabled: Boolean(row.enabled),
+      content: row.content as string | undefined,
+      config: row.config ? JSON.parse(row.config as string) : undefined,
+      createdAt: row.created_at as number,
+      updatedAt: row.updated_at as number,
     })) as ISkill[];
   },
 

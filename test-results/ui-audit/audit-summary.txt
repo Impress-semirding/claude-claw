@@ -1,0 +1,22 @@
+[console] __name is not defined
+[console] __name is not defined
+[console] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+[console] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+[console] __name is not defined
+[console] __name is not defined
+[console] __name is not defined
+[console] __name is not defined
+[console] __name is not defined
+[console] __name is not defined
+[console] __name is not defined
+[console] __name is not defined
+[console] __name is not defined
+[api] GET http://localhost:5173/src/api/client.ts -> 304
+[api] GET http://localhost:5173/src/api/ws.ts -> 304
+[console] __name is not defined
+[console] __name is not defined
+[api] GET http://localhost:5173/src/api/client.ts -> 304
+[api] GET http://localhost:5173/src/api/ws.ts -> 304
+[console] __name is not defined
+[console] __name is not defined
+[console] __name is not defined

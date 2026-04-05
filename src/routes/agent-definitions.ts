@@ -2,12 +2,56 @@ import type { FastifyInstance } from 'fastify';
 import { authMiddleware, adminMiddleware } from './auth.js';
 import { randomUUID } from 'crypto';
 import { agentDb } from '../db.js';
+import type { IAgent } from '../types.js';
+
+function parseAgentFrontmatter(prompt: string) {
+  let description = '';
+  let tools: string[] = [];
+  const match = prompt.match(/^---\s*\n([\s\S]*?)\n---/);
+  if (match) {
+    const yaml = match[1];
+    const descMatch = yaml.match(/^description:\s*(.*)$/m);
+    if (descMatch) description = descMatch[1].trim();
+    const toolsMatch = yaml.match(/^tools:\s*\n((?:\s+-\s+.*\n?)+)/m);
+    if (toolsMatch) {
+      tools = toolsMatch[1]
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l.startsWith('- '))
+        .map((l) => l.replace(/^-\s+/, '').trim());
+    }
+  }
+  return { description, tools };
+}
+
+function toAgentResponse(agent: IAgent) {
+  const { description, tools } = parseAgentFrontmatter(agent.prompt || '');
+  return {
+    id: agent.id,
+    name: agent.name,
+    description,
+    tools,
+    updatedAt: new Date(agent.updatedAt as number).toISOString(),
+  };
+}
+
+function toAgentDetailResponse(agent: IAgent) {
+  const { description, tools } = parseAgentFrontmatter(agent.prompt || '');
+  return {
+    id: agent.id,
+    name: agent.name,
+    description,
+    tools,
+    updatedAt: new Date(agent.updatedAt as number).toISOString(),
+    content: agent.prompt || '',
+  };
+}
 
 export default async function agentDefinitionsRoutes(fastify: FastifyInstance) {
   // GET /api/agent-definitions - 获取所有 Agent 定义
   fastify.get('/', { preHandler: authMiddleware }, async (request, reply) => {
     try {
-      const agentsList = agentDb.findAll ? agentDb.findAll() : [];
+      const agentsList = agentDb.findAll ? agentDb.findAll().map(toAgentResponse) : [];
       return reply.send({ agents: agentsList });
     } catch (error) {
       return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to load agents' });
@@ -22,7 +66,7 @@ export default async function agentDefinitionsRoutes(fastify: FastifyInstance) {
       if (!agent) {
         return reply.status(404).send({ error: 'Agent not found' });
       }
-      return reply.send({ agent });
+      return reply.send({ agent: toAgentDetailResponse(agent) });
     } catch (error) {
       return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to load agent' });
     }

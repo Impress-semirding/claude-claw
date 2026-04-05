@@ -67,6 +67,18 @@ export function stopWorkspace(workspaceId: string, force = false): boolean {
   return stopProcess(tracked.proc.pid?.toString() || tracked.workspaceId, force);
 }
 
+export async function waitForWorkspaceExit(workspaceId: string, timeoutMs = 3000): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const tracked = getProcessByWorkspace(workspaceId);
+    if (!tracked || tracked.proc.killed) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
+}
+
 export function listActive(): Array<{ processId: string; workspaceId: string; userId: string; startedAt: number }> {
   const result: Array<{ processId: string; workspaceId: string; userId: string; startedAt: number }> = [];
   for (const [processId, tracked] of registry) {

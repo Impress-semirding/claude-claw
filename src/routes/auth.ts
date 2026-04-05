@@ -12,8 +12,20 @@ import {
 import { userDb, inviteCodeDb, userSessionDb } from '../db.js';
 import type { IAuthToken } from '../services/auth.service.js';
 import { resolve } from 'path';
-import { writeFileSync, mkdirSync, createReadStream, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, createReadStream, existsSync, readFileSync } from 'fs';
 import { appConfig } from '../config.js';
+
+function readSystemConfig(): any {
+  const p = resolve(appConfig.dataDir, 'config', 'system.json');
+  if (existsSync(p)) {
+    try {
+      return JSON.parse(readFileSync(p, 'utf-8'));
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
 
 // Register schema
 const registerSchema = z.object({
@@ -185,7 +197,11 @@ export default async function authRoutes(fastify: FastifyInstance) {
       if (users.length === 0) {
         return reply.send({ allowRegistration: false, requireInviteCode: true });
       }
-      return reply.send({ allowRegistration: true, requireInviteCode: false });
+      const system = readSystemConfig();
+      return reply.send({
+        allowRegistration: system.allowRegistration ?? true,
+        requireInviteCode: system.requireInviteCode ?? false,
+      });
     } catch {
       return reply.send({ allowRegistration: true, requireInviteCode: false });
     }
@@ -390,6 +406,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     return reply.send({
       sessions: sessions.map((s) => ({
+        id: s.id,
         shortId: s.token.slice(0, 8),
         ip_address: s.ipAddress || '127.0.0.1',
         user_agent: s.userAgent || null,
@@ -404,7 +421,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
   fastify.delete('/sessions/:id', { preHandler: authMiddleware }, (request, reply) => {
     const user = request.user as IAuthToken;
     const sessions = userSessionDb.findByUser(user.userId);
-    const target = sessions.find((s) => s.token.slice(0, 8) === (request.params as any).id);
+    const target = sessions.find((s) => s.id === (request.params as any).id);
     if (target) {
       userSessionDb.revoke(target.id);
     }

@@ -2,6 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { authMiddleware } from './auth.js';
 import { groupDb, messageDb, mcpServerDb } from '../db.js';
 import { randomUUID } from 'crypto';
+import { resolve } from 'path';
+import { existsSync, readFileSync } from 'fs';
+import { appConfig } from '../config.js';
 import {
   querySession,
   getOrCreateSession,
@@ -65,17 +68,54 @@ async function handleMessageSend(
     attachments: attachments ? JSON.stringify(attachments) : undefined,
   });
 
-  // Get enabled MCP servers for this user/group
-  const enabledMcpServers = mcpServerDb.findEnabled().map((s) => ({
-    name: s.name,
-    command: s.command,
-    args: s.args,
-    env: s.env,
-  }));
+  // Get enabled MCP servers for this user/group and shape them for the SDK
+  const enabledMcpServers = mcpServerDb.findEnabled().map((s) => {
+    if (s.type === 'sse' || s.url) {
+      return {
+        [s.name]: {
+          type: 'sse',
+          url: s.url,
+          headers: s.headers || {},
+        },
+      };
+    }
+    return {
+      [s.name]: {
+        type: 'stdio',
+        command: s.command,
+        args: s.args || [],
+        env: s.env || {},
+      },
+    };
+  });
 
-  // Start query in background
+  // Build system prompt: global memory + group system prompt
   const groupConfig = group.config || {};
-  const systemPrompt = groupConfig.systemPrompt;
+  let systemPrompt = groupConfig.systemPrompt || '';
+
+  // Read user global memory (data/groups/user-global/{userId}/CLAUDE.md)
+  const globalMemoryDir = resolve(appConfig.dataDir, 'groups', 'user-global', userId);
+  const globalMemoryPath = resolve(globalMemoryDir, 'CLAUDE.md');
+  if (existsSync(globalMemoryPath)) {
+    const memoryContent = readFileSync(globalMemoryPath, 'utf-8');
+    if (memoryContent.trim()) {
+      systemPrompt = systemPrompt
+        ? `${memoryContent.trim()}\n\n${systemPrompt}`
+        : memoryContent.trim();
+    }
+  }
+
+  const mcpNames = enabledMcpServers.map((obj: any) => Object.keys(obj)[0] || 'unnamed');
+  console.log('[messages] startQuery', {
+    userId,
+    chatJid,
+    sessionId: session.sessionId,
+    promptLength: content.length,
+    systemPromptLength: systemPrompt.length,
+    mcpCount: enabledMcpServers.length,
+    mcpNames,
+  });
+  console.log('[messages] mcpPayload:', JSON.stringify(enabledMcpServers));
 
   startQuery(userId, chatJid, session.sessionId, content, enabledMcpServers, systemPrompt);
 
@@ -101,7 +141,8 @@ async function startQuery(
   let assistantText = '';
   let turnId = `turn-${Date.now()}`;
 
-  console.log('[messages] startQuery', { userId, chatJid, sessionId, promptLength: prompt.length });
+  const mcpNames = mcpServers.map((obj: any) => Object.keys(obj)[0] || 'unnamed');
+  console.log('[messages] startQuery', { userId, chatJid, sessionId, promptLength: prompt.length, mcpCount: mcpServers.length, mcpNames });
 
   try {
     const stream = querySession({
@@ -206,7 +247,7 @@ export default async function messagesRoutes(fastify: FastifyInstance) {
 
     try {
       const body = request.body as any;
-      const chatJid = body.chatJid || body.group_jid || body.groupId;
+      const chatJid = body.chatJid || body.chat_jid || body.group_jid || body.groupId;
       const { content, attachments, agentId } = body;
 
       if (!chatJid || typeof chatJid !== 'string') {

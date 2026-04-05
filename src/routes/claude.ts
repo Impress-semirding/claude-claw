@@ -207,6 +207,55 @@ export default async function claudeRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // GET query endpoint (streaming SSE for UI compatibility)
+  fastify.get('/query', async (request, reply) => {
+    try {
+      const user = request.user as IAuthToken;
+      const query = request.query as any;
+      const workspace = query.workspace || 'default';
+      const sessionId = query.sessionId || query.session_id || uuidv4();
+      const prompt = query.prompt || '';
+      const systemPrompt = query.systemPrompt || undefined;
+
+      if (!prompt) {
+        return reply.status(400).send({ success: false, error: 'Prompt is required' });
+      }
+
+      const session = await getOrCreateSession(user.userId, workspace, sessionId);
+      saveUserMessage(user.userId, session.sessionId, prompt);
+
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+
+      const queryStream = querySession({
+        userId: user.userId,
+        workspace,
+        sessionId: session.sessionId,
+        prompt,
+        mcpServers: [],
+        systemPrompt,
+      });
+
+      for await (const event of queryStream) {
+        const line = `data: ${JSON.stringify(event)}\n\n`;
+        reply.raw.write(line);
+      }
+
+      reply.raw.end();
+      return reply;
+    } catch (error) {
+      return reply.status(500).send(
+        {
+          success: false,
+          error: error instanceof Error ? error.message : 'Query failed',
+        }
+      );
+    }
+  });
+
   // Stream query endpoint
   fastify.post('/query/stream', async (request, reply) => {
     try {

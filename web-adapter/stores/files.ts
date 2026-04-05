@@ -53,7 +53,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
 
   createDirectory: async (jid: string, parentPath: string, name: string) => {
     try {
-      await api.post(`/api/groups/${jid}/directories`, { path: parentPath, name });
+      await api.post(`/api/groups/${jid}/files/directories`, { path: parentPath, name });
       await get().loadFiles(jid, parentPath);
       return true;
     } catch (err) {

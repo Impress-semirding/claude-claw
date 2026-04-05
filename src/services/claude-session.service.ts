@@ -174,11 +174,25 @@ export async function getOrCreateSession(
   workspace: string,
   sessionId?: string
 ): Promise<ISessionInfo> {
-  const sid = sessionId || uuidv4();
-  const existing = getSession(userId, workspace, sid);
-  if (existing) {
-    return existing;
+  // 如果显式传了 sessionId，精确匹配或新建
+  if (sessionId) {
+    const existing = getSession(userId, workspace, sessionId);
+    if (existing) {
+      return existing;
+    }
+    return createSession(userId, workspace, sessionId);
   }
+
+  // 未传 sessionId 时，复用该用户在该 workspace 下最新的 active session
+  const candidates = listUserSessions(userId).filter(
+    (s) => s.workspace === workspace && s.status !== 'destroyed'
+  );
+  if (candidates.length > 0) {
+    return candidates[0];
+  }
+
+  // 完全没有则新建
+  const sid = uuidv4();
   return createSession(userId, workspace, sid);
 }
 
@@ -393,7 +407,7 @@ export async function* querySession({
         console.log('[claude-session] spawn exit', { code, signal });
       });
       const processId = proc.pid?.toString() || `${userId}-${sessionId}-${Date.now()}`;
-      processRegistry.registerProcess(processId, proc, sessionId, userId);
+      processRegistry.registerProcess(processId, proc, workspace, userId);
       return proc;
     },
   };

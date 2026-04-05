@@ -6,9 +6,12 @@ import { mcpServerDb } from '../db.js';
 // Create MCP server schema
 const createSchema = z.object({
   name: z.string().min(1),
-  command: z.string().min(1),
+  command: z.string().default(''),
   args: z.array(z.string()).default([]),
   env: z.record(z.string()).optional(),
+  type: z.string().default('stdio'),
+  url: z.string().optional(),
+  headers: z.record(z.string()).optional(),
 });
 
 export default async function mcpRoutes(fastify: FastifyInstance) {
@@ -57,11 +60,14 @@ export default async function mcpRoutes(fastify: FastifyInstance) {
       const data = createSchema.parse(body);
 
       const server = mcpServerDb.create({
-        id: uuidv4(),
+        id: body.id || uuidv4(),
         name: data.name,
         command: data.command,
         args: data.args,
         env: data.env,
+        type: data.type,
+        url: data.url,
+        headers: data.headers,
         enabled: true,
       });
 

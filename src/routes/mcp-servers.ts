@@ -13,8 +13,11 @@ export default async function mcpServersRoutes(fastify: FastifyInstance) {
         command: s.command,
         args: s.args || [],
         env: s.env || {},
+        type: s.type || 'stdio',
+        url: s.url,
+        headers: s.headers,
         enabled: s.enabled,
-        created_at: new Date(s.createdAt).toISOString(),
+        addedAt: new Date(s.createdAt).toISOString(),
         updated_at: new Date(s.updatedAt).toISOString(),
       }));
       return reply.send({ servers });
@@ -27,13 +30,20 @@ export default async function mcpServersRoutes(fastify: FastifyInstance) {
   fastify.post('/', { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {
     try {
       const body = request.body as any;
+      const enabled =
+        body.status !== undefined ? body.status === 'active' : body.enabled ?? true;
+      // Frontend may send id, type, url, headers for SSE servers
+      const serverId = body.id || randomUUID();
       const server = mcpServerDb.create({
-        id: randomUUID(),
-        name: body.name,
-        command: body.command,
+        id: serverId,
+        name: body.name || body.id || 'unnamed',
+        command: body.command || '',
         args: body.args || [],
         env: body.env || {},
-        enabled: body.enabled ?? true,
+        type: body.type || 'stdio',
+        url: body.url,
+        headers: body.headers,
+        enabled,
       });
       return reply.status(201).send({ success: true, id: server.id });
     } catch (error) {
@@ -50,16 +60,40 @@ export default async function mcpServersRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: 'MCP server not found' });
       }
       const body = request.body as any;
-      mcpServerDb.update(id, {
+      const updates: any = {
         name: body.name,
         command: body.command,
         args: body.args,
         env: body.env,
-        enabled: body.enabled,
-      });
+        type: body.type,
+        url: body.url,
+        headers: body.headers,
+      };
+      if (body.status !== undefined) {
+        updates.enabled = body.status === 'active';
+      } else if (body.enabled !== undefined) {
+        updates.enabled = body.enabled;
+      }
+      mcpServerDb.update(id, updates);
       return reply.send({ success: true, id });
     } catch (error) {
       return reply.status(400).send({ error: error instanceof Error ? error.message : 'Failed to update MCP server' });
+    }
+  });
+
+  // POST /api/mcp-servers/:id/toggle - 切换 MCP 服务器状态
+  fastify.post('/:id/toggle', { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {
+    try {
+      const id = (request.params as any).id as string;
+      const server = mcpServerDb.findById(id);
+      if (!server) {
+        return reply.status(404).send({ error: 'MCP server not found' });
+      }
+      const newEnabled = !server.enabled;
+      mcpServerDb.update(id, { enabled: newEnabled });
+      return reply.send({ success: true, enabled: newEnabled, status: newEnabled ? 'active' : 'inactive' });
+    } catch (error) {
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to toggle MCP server' });
     }
   });
 

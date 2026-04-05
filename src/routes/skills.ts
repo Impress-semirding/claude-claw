@@ -26,6 +26,7 @@ import {
   validateSkillPath,
   parseFrontmatter,
   scanSkillDirectory,
+  listFiles,
 } from '../skill-utils.js';
 
 const execFileAsync = promisify(execFile);
@@ -54,6 +55,24 @@ function readConfig(name: string, fallback: any = {}) {
 
 function writeConfig(name: string, data: any) {
   writeFileSync(configPath(name), JSON.stringify(data, null, 2));
+}
+
+function writeSkillToUserDir(
+  userId: string,
+  skillId: string,
+  content: string,
+  enabled: boolean
+): void {
+  const skillDir = join(getUserSkillsDir(userId), skillId);
+  mkdirSync(skillDir, { recursive: true });
+  const targetName = enabled ? 'SKILL.md' : 'SKILL.md.disabled';
+  const otherName = enabled ? 'SKILL.md.disabled' : 'SKILL.md';
+  writeFileSync(join(skillDir, targetName), content, 'utf-8');
+  try {
+    rmSync(join(skillDir, otherName), { force: true });
+  } catch {
+    // ignore
+  }
 }
 
 function getUserSkillsDir(userId: string): string {
@@ -148,7 +167,7 @@ function copySkillToUser(src: string, dest: string): void {
   cpSync(realSrc, dest, { recursive: true });
 }
 
-// Map filesystem skill to DB-like shape expected by web-adapter
+// Map filesystem skill to API shape expected by frontend
 function fileSkillToApi(skillId: string, userId: string): any {
   const userDir = getUserSkillsDir(userId);
   const skillDir = join(userDir, skillId);
@@ -175,6 +194,16 @@ function fileSkillToApi(skillId: string, userId: string): any {
     const stats = statSync(skillDir);
     const manifest = readSkillsManifest(userId);
     const hostManifest = readHostSyncManifest(userId);
+    const updatedAt = stats.mtime.toISOString();
+
+    const config = {
+      userInvocable: frontmatter['user-invocable'] === undefined ? true : frontmatter['user-invocable'] !== 'false',
+      allowedTools: frontmatter['allowed-tools'] ? frontmatter['allowed-tools'].split(',').map((t: string) => t.trim()) : [],
+      argumentHint: frontmatter['argument-hint'] || null,
+      packageName: manifest.skills[skillId]?.packageName || null,
+      installedAt: manifest.skills[skillId]?.installedAt || updatedAt,
+      syncedFromHost: hostManifest.syncedSkills.includes(skillId),
+    };
 
     return {
       id: skillId,
@@ -182,20 +211,32 @@ function fileSkillToApi(skillId: string, userId: string): any {
       description: frontmatter.description || '',
       source: 'user',
       enabled,
+      ...config,
+      updatedAt,
+      files: listFiles(skillDir),
       content,
-      config: {
-        userInvocable: frontmatter['user-invocable'] === undefined ? true : frontmatter['user-invocable'] !== 'false',
-        allowedTools: frontmatter['allowed-tools'] ? frontmatter['allowed-tools'].split(',').map((t: string) => t.trim()) : [],
-        argumentHint: frontmatter['argument-hint'] || null,
-        packageName: manifest.skills[skillId]?.packageName || null,
-        installedAt: manifest.skills[skillId]?.installedAt || stats.mtime.toISOString(),
-        syncedFromHost: hostManifest.syncedSkills.includes(skillId),
-      },
-      created_at: stats.mtime.toISOString(),
+      config,
     };
   } catch {
     return null;
   }
+}
+
+function normalizeDbSkill(skill: any): any {
+  const cfg = skill.config || {};
+  const updatedAt = typeof skill.updatedAt === 'number' ? new Date(skill.updatedAt).toISOString() : skill.updatedAt;
+  return {
+    ...skill,
+    userInvocable: cfg.userInvocable ?? true,
+    allowedTools: cfg.allowedTools ?? [],
+    argumentHint: cfg.argumentHint ?? null,
+    packageName: cfg.packageName || null,
+    installedAt: cfg.installedAt ? new Date(cfg.installedAt).toISOString() : null,
+    syncedFromHost: cfg.syncedFromHost ?? false,
+    updatedAt,
+    files: [],
+    config: skill.config,
+  };
 }
 
 // Build merged list: DB skills + filesystem skills
@@ -206,7 +247,7 @@ function buildSkillList(userId: string, isAdmin: boolean): any[] {
 
   const filesystemSkills = scanSkillDirectory(getUserSkillsDir(userId), 'user');
   const dbIds = new Set(dbSkills.map((s: any) => s.id));
-  const merged = [...dbSkills];
+  const merged = dbSkills.map(normalizeDbSkill);
 
   for (const fsSkill of filesystemSkills) {
     if (!dbIds.has(fsSkill.id)) {
@@ -218,12 +259,21 @@ function buildSkillList(userId: string, isAdmin: boolean): any[] {
       if (idx >= 0) {
         const manifest = readSkillsManifest(userId);
         const hostManifest = readHostSyncManifest(userId);
+        const cfg = merged[idx].config || {};
+        const updatedAt = merged[idx].updatedAt;
+        const fsUpdatedAt = fsSkill.updatedAt;
+
         merged[idx] = {
           ...merged[idx],
+          packageName: manifest.skills[fsSkill.id]?.packageName || cfg.packageName || merged[idx].packageName,
+          installedAt: manifest.skills[fsSkill.id]?.installedAt || cfg.installedAt || merged[idx].installedAt,
+          syncedFromHost: hostManifest.syncedSkills.includes(fsSkill.id),
+          updatedAt: fsUpdatedAt > updatedAt ? fsUpdatedAt : updatedAt,
+          files: listFiles(join(getUserSkillsDir(userId), fsSkill.id)),
           config: {
-            ...(merged[idx].config || {}),
-            packageName: manifest.skills[fsSkill.id]?.packageName || merged[idx].config?.packageName,
-            installedAt: manifest.skills[fsSkill.id]?.installedAt || merged[idx].config?.installedAt,
+            ...cfg,
+            packageName: manifest.skills[fsSkill.id]?.packageName || cfg.packageName || merged[idx].packageName,
+            installedAt: manifest.skills[fsSkill.id]?.installedAt || cfg.installedAt || merged[idx].installedAt,
             syncedFromHost: hostManifest.syncedSkills.includes(fsSkill.id),
           },
         };
@@ -606,16 +656,20 @@ export default async function skillsRoutes(fastify: FastifyInstance) {
       const user = request.user as { userId: string };
       const body = request.body as any;
       const id = body.id || randomUUID();
+      const enabled = body.enabled ?? true;
       const skill = skillDb.create({
         id,
         userId: user.userId,
         name: body.name,
         description: body.description || '',
         source: body.source || 'user',
-        enabled: body.enabled ?? true,
+        enabled,
         content: body.content || null,
         config: body.config || {},
       });
+      if (body.content) {
+        writeSkillToUserDir(user.userId, id, body.content, enabled);
+      }
       return reply.status(201).send({ success: true, skill });
     } catch (error) {
       return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to create skill' });
@@ -628,18 +682,29 @@ export default async function skillsRoutes(fastify: FastifyInstance) {
       const user = request.user as { userId: string };
       const body = request.body as any;
 
-      // filesystem enable/disable toggle
       const userDir = getUserSkillsDir(user.userId);
       const skillDir = join(userDir, id);
-      if (existsSync(skillDir) && validateSkillPath(userDir, skillDir) && typeof body.enabled === 'boolean') {
-        const srcPath = join(skillDir, body.enabled ? 'SKILL.md.disabled' : 'SKILL.md');
-        const dstPath = join(skillDir, body.enabled ? 'SKILL.md' : 'SKILL.md.disabled');
-        if (existsSync(srcPath)) {
-          renameSync(srcPath, dstPath);
+      const skill = skillDb.findById(id);
+
+      // Update filesystem backing when content or enabled changes
+      if (typeof body.enabled === 'boolean' || body.content) {
+        if (existsSync(skillDir) && validateSkillPath(userDir, skillDir)) {
+          if (body.content) {
+            const enabled = body.enabled ?? skill?.enabled ?? true;
+            writeSkillToUserDir(user.userId, id, body.content, enabled);
+          } else if (typeof body.enabled === 'boolean') {
+            const srcPath = join(skillDir, body.enabled ? 'SKILL.md.disabled' : 'SKILL.md');
+            const dstPath = join(skillDir, body.enabled ? 'SKILL.md' : 'SKILL.md.disabled');
+            if (existsSync(srcPath)) {
+              renameSync(srcPath, dstPath);
+            }
+          }
+        } else if (body.content) {
+          // create fresh filesystem backing if it doesn't exist yet
+          writeSkillToUserDir(user.userId, id, body.content, body.enabled ?? true);
         }
       }
 
-      const skill = skillDb.findById(id);
       if (skill) {
         skillDb.update(id, {
           name: body.name,

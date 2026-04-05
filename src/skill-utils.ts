@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync, realpathSync } from 'fs';
-import { join } from 'path';
+import { join, relative, isAbsolute } from 'path';
 
 export interface SkillInfo {
   id: string;
@@ -22,8 +22,8 @@ export function validateSkillPath(skillsRoot: string, skillDir: string): boolean
   try {
     const realSkillsRoot = realpathSync(skillsRoot);
     const realSkillDir = realpathSync(skillDir);
-    const relative = require('path').relative(realSkillsRoot, realSkillDir);
-    return !relative.startsWith('..') && !require('path').isAbsolute(relative);
+    const rel = relative(realSkillsRoot, realSkillDir);
+    return !rel.startsWith('..') && !isAbsolute(rel);
   } catch {
     return false;
   }
