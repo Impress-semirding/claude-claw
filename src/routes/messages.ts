@@ -173,6 +173,13 @@ async function startQuery(
       prompt,
       mcpServers,
       systemPrompt,
+      onStreamEvent: (ev) => {
+        broadcastStreamEvent(chatJid, ev, agentId);
+        if (ev.eventType === 'text_delta' || ev.eventType === 'thinking_delta') {
+          broadcastTyping(chatJid, false, agentId);
+        }
+      },
+      turnId,
     });
 
     for await (const event of stream) {
@@ -184,21 +191,7 @@ async function startQuery(
       }
 
       if (ev.type === 'assistant' && ev.content) {
-        assistantText += ev.content;
-        broadcastStreamEvent(chatJid, {
-          eventType: 'text_delta',
-          text: ev.content,
-          turnId,
-        }, agentId);
-        broadcastTyping(chatJid, false, agentId);
-      } else if (ev.type === 'tool') {
-        broadcastStreamEvent(chatJid, {
-          eventType: 'tool_use_start',
-          toolName: ev.tool_name || 'unknown',
-          toolUseId: randomUUID(),
-          turnId,
-        }, agentId);
-        broadcastTyping(chatJid, false, agentId);
+        assistantText = ev.content;
       } else if (ev.type === 'error') {
         broadcastStreamEvent(chatJid, {
           eventType: 'error',

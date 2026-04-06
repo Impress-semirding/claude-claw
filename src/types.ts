@@ -283,8 +283,8 @@ export interface WsMessageIn {
 
 // StreamEvent (aligned with HappyClaw)
 export type StreamEvent =
-  | { eventType: 'text_delta'; text: string; turnId?: string }
-  | { eventType: 'thinking_delta'; text: string; turnId?: string }
+  | { eventType: 'text_delta'; text: string; turnId?: string; parentToolUseId?: string | null }
+  | { eventType: 'thinking_delta'; text: string; turnId?: string; parentToolUseId?: string | null }
   | {
       eventType: 'tool_use_start';
       toolName: string;
@@ -295,14 +295,25 @@ export type StreamEvent =
       skillName?: string;
       turnId?: string;
     }
-  | { eventType: 'tool_use_end'; toolUseId: string; turnId?: string }
-  | { eventType: 'tool_progress'; toolUseId: string; toolInputSummary?: string; turnId?: string }
+  | { eventType: 'tool_use_end'; toolUseId: string; turnId?: string; parentToolUseId?: string | null }
+  | {
+      eventType: 'tool_progress';
+      toolUseId: string;
+      toolInputSummary?: string;
+      toolName?: string;
+      parentToolUseId?: string | null;
+      isNested?: boolean;
+      elapsedSeconds?: number;
+      skillName?: string;
+      toolInput?: Record<string, unknown>;
+      turnId?: string;
+    }
   | { eventType: 'status'; statusText: string; turnId?: string }
   | { eventType: 'hook_started'; hookName: string; hookEvent?: string; turnId?: string }
-  | { eventType: 'hook_progress'; hookName: string; text: string; turnId?: string }
-  | { eventType: 'hook_response'; hookName: string; text: string; turnId?: string }
-  | { eventType: 'task_start'; taskId: string; taskName: string; turnId?: string }
-  | { eventType: 'task_notification'; taskId: string; message: string; turnId?: string }
+  | { eventType: 'hook_progress'; hookName: string; hookEvent?: string; text?: string; turnId?: string }
+  | { eventType: 'hook_response'; hookName: string; hookEvent?: string; text?: string; turnId?: string }
+  | { eventType: 'task_start'; taskId?: string; taskName?: string; toolUseId?: string; taskDescription?: string; turnId?: string }
+  | { eventType: 'task_notification'; taskId: string; message?: string; taskStatus?: string; taskSummary?: string; turnId?: string }
   | { eventType: 'todo_update'; todos: Array<{ id: string; content: string; status: string }>; turnId?: string }
   | { eventType: 'init'; session_id: string; turnId?: string }
   | { eventType: 'complete'; turnId?: string }

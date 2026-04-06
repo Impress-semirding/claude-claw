@@ -3,9 +3,10 @@ import { resolve, join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { appConfig } from '../config.js';
 import { sessionDb, messageDb, groupDb } from '../db.js';
-import type { ISessionInfo, IStreamEvent } from '../types.js';
+import type { ISessionInfo, IStreamEvent, StreamEvent } from '../types.js';
 import { getIsolator } from './workspace-isolator/factory.js';
 import * as processRegistry from './process-registry.js';
+import { ClawStreamProcessor } from './stream-processor.js';
 
 interface ProviderRecord {
   id: string;
@@ -307,6 +308,8 @@ export async function* querySession({
   prompt,
   mcpServers = {} as Record<string, unknown>,
   systemPrompt,
+  onStreamEvent,
+  turnId,
 }: {
   userId: string;
   workspace: string;
@@ -314,6 +317,8 @@ export async function* querySession({
   prompt: string;
   mcpServers?: Record<string, unknown>;
   systemPrompt?: string;
+  onStreamEvent?: (event: StreamEvent) => void;
+  turnId?: string;
 }): AsyncGenerator<IStreamEvent> {
   const key = sessionKey(userId, workspace, sessionId);
   let session = sessions.get(key);
@@ -437,6 +442,8 @@ export async function* querySession({
     console.log('[claude-session] calling claudeQuery with prompt length', fullPrompt.length);
     const stream = claudeQuery({ prompt: fullPrompt, options });
 
+    const processor = onStreamEvent ? new ClawStreamProcessor(onStreamEvent, turnId || `turn-${Date.now()}`) : null;
+
     for await (const rawMessage of stream) {
       const message = rawMessage as any;
       console.log('[claude-session] stream message', message.type, message.subtype || '');
@@ -468,6 +475,20 @@ export async function* querySession({
         sessionDb.update(sessionId, { sdk_session_id: message.session_id });
       }
 
+      if (processor) {
+        processor.processMessage(message);
+        // Only yield raw errors directly; all other events are emitted via processor callback
+        if (message.type === 'error') {
+          yield {
+            type: 'error',
+            error: message.error || 'Unknown error',
+            timestamp: Date.now(),
+          };
+        }
+        continue;
+      }
+
+      // Backwards-compatible path when no onStreamEvent provided
       // Extract content for assistant messages (SDK nests the message under .message)
       let content: string | undefined = message.content;
       if (message.type === 'assistant' && !content && message.message) {
@@ -496,10 +517,18 @@ export async function* querySession({
       };
 
       yield event;
+    }
 
-      // Note: assistant message is saved by the caller (messages.ts) after
-      // accumulating the full response. We intentionally do NOT save deltas
-      // here to avoid duplicate/confusing entries in the message history.
+    if (processor) {
+      processor.cleanup();
+      const fullText = processor.getFullText();
+      if (fullText) {
+        yield {
+          type: 'assistant',
+          content: fullText,
+          timestamp: Date.now(),
+        };
+      }
     }
 
     // Mark as complete
