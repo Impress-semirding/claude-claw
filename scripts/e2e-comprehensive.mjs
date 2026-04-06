@@ -300,8 +300,8 @@ class PlaywrightTester {
     await this.testApi('Memory Search', 'GET', '/api/memory/search?q=test');
     await this.testApi('Memory Global', 'GET', '/api/memory/global');
     await this.testApi('Memory Global Write', 'PUT', '/api/memory/global', { content: '# E2E Test Memory' });
-    await this.testApi('Memory File', 'GET', '/api/memory/file?path=CLAUDE.md');
-    await this.testApi('Memory File Write', 'PUT', '/api/memory/file', { path: 'CLAUDE.md', content: '# E2E Test' });
+    await this.testApi('Memory File', 'GET', '/api/memory/file?path=data/groups/main/CLAUDE.md');
+    await this.testApi('Memory File Write', 'PUT', '/api/memory/file', { path: 'data/groups/main/CLAUDE.md', content: '# E2E Test' });
   }
 
   async testConfigApis() {

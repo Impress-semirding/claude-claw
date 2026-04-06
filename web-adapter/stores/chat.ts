@@ -14,6 +14,7 @@ import {
   onWsStreamEvent,
   onWsRunnerState,
   onWsTyping,
+  onWsOpen,
   initWebSocket,
 } from '../api/ws.js';
 
@@ -123,6 +124,7 @@ interface ChatState {
   clearHistory: (id: string) => Promise<void>;
   handleStreamEvent: (id: string, event: StreamEvent) => void;
   initWebSocket: () => void;
+  restoreActiveState: () => Promise<void>;
   loadAgents: (groupId: string) => Promise<void>;
   selectAgentTab: (groupId: string, agentId: string | null) => void;
   loadAgentMessages: (groupId: string, agentId: string, opts?: LoadMessagesOpts) => Promise<void>;
@@ -138,6 +140,66 @@ const DEFAULT_STREAMING_STATE: StreamingState = {
   systemStatus: null,
   recentEvents: [],
 };
+
+const STREAMING_STORAGE_KEY = 'claw_streaming';
+const streamingSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function saveStreamingToSession(chatJid: string, state: StreamingState | undefined): void {
+  const existing = streamingSaveTimers.get(chatJid);
+  if (existing) clearTimeout(existing);
+  streamingSaveTimers.set(chatJid, setTimeout(() => {
+    streamingSaveTimers.delete(chatJid);
+    try {
+      const stored = JSON.parse(sessionStorage.getItem(STREAMING_STORAGE_KEY) || '{}');
+      if (state && (state.partialText || state.activeTools.length > 0 || state.recentEvents.length > 0)) {
+        stored[chatJid] = {
+          partialText: state.partialText.slice(-4000),
+          thinkingText: '',
+          isThinking: false,
+          activeTools: state.activeTools,
+          recentEvents: state.recentEvents.slice(-10),
+          systemStatus: state.systemStatus,
+          turnId: state.turnId,
+          ts: Date.now(),
+        };
+      } else {
+        delete stored[chatJid];
+      }
+      sessionStorage.setItem(STREAMING_STORAGE_KEY, JSON.stringify(stored));
+    } catch { /* quota exceeded or SSR */ }
+  }, 500));
+}
+
+function clearStreamingFromSession(chatJid: string): void {
+  const timer = streamingSaveTimers.get(chatJid);
+  if (timer) { clearTimeout(timer); streamingSaveTimers.delete(chatJid); }
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(STREAMING_STORAGE_KEY) || '{}');
+    delete stored[chatJid];
+    sessionStorage.setItem(STREAMING_STORAGE_KEY, JSON.stringify(stored));
+  } catch { /* SSR */ }
+}
+
+function restoreStreamingFromSession(chatJid: string): StreamingState | null {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(STREAMING_STORAGE_KEY) || '{}');
+    const entry = stored[chatJid];
+    if (!entry) return null;
+    if (Date.now() - (entry.ts || 0) > 5 * 60 * 1000) {
+      delete stored[chatJid];
+      sessionStorage.setItem(STREAMING_STORAGE_KEY, JSON.stringify(stored));
+      return null;
+    }
+    return {
+      ...DEFAULT_STREAMING_STATE,
+      partialText: entry.partialText || '',
+      activeTools: entry.activeTools || [],
+      recentEvents: entry.recentEvents || [],
+      systemStatus: entry.systemStatus || null,
+      turnId: entry.turnId,
+    };
+  } catch { return null; }
+}
 
 function mapGroup(data: any): GroupInfo {
   return {
@@ -282,11 +344,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const data = await api.get<{ messages: any[]; hasMore: boolean }>(url);
       const msgs = data.messages.map(mapMessage);
 
-      set((s: ChatState) => ({
-        messages: { ...s.messages, [id]: msgs },
-        hasMore: { ...s.hasMore, [id]: data.hasMore },
-        error: null,
-      }));
+      set((s: ChatState) => {
+        const latest = msgs.length > 0 ? msgs[msgs.length - 1] : null;
+        const shouldWait =
+          !!latest &&
+          latest.sender !== '__system__' &&
+          (latest.is_from_me === false || latest.source_kind === 'sdk_send_message');
+        const nextWaiting = { ...s.waiting };
+        if (shouldWait) {
+          nextWaiting[id] = true;
+        } else {
+          delete nextWaiting[id];
+        }
+        return {
+          messages: { ...s.messages, [id]: msgs },
+          waiting: nextWaiting,
+          hasMore: { ...s.hasMore, [id]: data.hasMore },
+          error: null,
+        };
+      });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : String(err) });
     }
@@ -371,6 +447,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   stopGroup: async (id: string) => {
     try {
       await api.post(`/api/groups/${id}/stop`, {});
+      clearStreamingFromSession(id);
+      set((s: ChatState) => {
+        const nextStreaming = { ...s.streaming };
+        delete nextStreaming[id];
+        return {
+          waiting: { ...s.waiting, [id]: false },
+          streaming: nextStreaming,
+        };
+      });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : String(err) });
     }
@@ -379,6 +464,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   interruptQuery: async (id: string) => {
     try {
       await api.post(`/api/groups/${id}/interrupt`, {});
+      clearStreamingFromSession(id);
       set((s: ChatState) => ({
         waiting: { ...s.waiting, [id]: false },
         streaming: {
@@ -394,10 +480,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   resetSession: async (id: string) => {
     try {
       await api.post(`/api/groups/${id}/reset-session`, {});
-      set((s: ChatState) => ({
-        messages: { ...s.messages, [id]: [] },
-        error: null,
-      }));
+      clearStreamingFromSession(id);
+      set((s: ChatState) => {
+        const nextStreaming = { ...s.streaming };
+        delete nextStreaming[id];
+        return {
+          messages: { ...s.messages, [id]: [] },
+          waiting: { ...s.waiting, [id]: false },
+          streaming: nextStreaming,
+          error: null,
+        };
+      });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : String(err) });
     }
@@ -406,10 +499,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   clearHistory: async (id: string) => {
     try {
       await api.post(`/api/groups/${id}/clear-history`, {});
-      set((s: ChatState) => ({
-        messages: { ...s.messages, [id]: [] },
-        error: null,
-      }));
+      clearStreamingFromSession(id);
+      set((s: ChatState) => {
+        const nextStreaming = { ...s.streaming };
+        delete nextStreaming[id];
+        return {
+          messages: { ...s.messages, [id]: [] },
+          waiting: { ...s.waiting, [id]: false },
+          streaming: nextStreaming,
+          error: null,
+        };
+      });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : String(err) });
     }
@@ -419,6 +519,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((s: ChatState) => {
       const prev = s.streaming[id] || { ...DEFAULT_STREAMING_STATE };
       const next = reduceStreamEvent(prev, event);
+      saveStreamingToSession(id, next);
       return {
         streaming: { ...s.streaming, [id]: next },
         waiting: { ...s.waiting, [id]: true },
@@ -426,11 +527,72 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
   },
 
+  restoreActiveState: async () => {
+    try {
+      const data = await api.get<{
+        groups: Array<{ jid: string; status: 'running' | 'idle'; pendingMessages?: boolean }>;
+      }>('/api/status');
+      set((s: ChatState) => {
+        const nextWaiting = { ...s.waiting };
+        const nextStreaming = { ...s.streaming };
+        const knownJids = new Set(data.groups.map((g) => g.jid));
+
+        for (const jid of Object.keys(nextWaiting)) {
+          if (!knownJids.has(jid)) {
+            delete nextWaiting[jid];
+            delete nextStreaming[jid];
+            clearStreamingFromSession(jid);
+          }
+        }
+
+        for (const g of data.groups) {
+          if (g.pendingMessages) {
+            nextWaiting[g.jid] = true;
+            continue;
+          }
+          if (g.status !== 'running') {
+            delete nextWaiting[g.jid];
+            delete nextStreaming[g.jid];
+            clearStreamingFromSession(g.jid);
+            continue;
+          }
+          const msgs = s.messages[g.jid] || [];
+          const latest = msgs.length > 0 ? msgs[msgs.length - 1] : null;
+          const inferredWaiting =
+            !!latest &&
+            latest.sender !== '__system__' &&
+            (latest.is_from_me === false || latest.source_kind === 'sdk_send_message');
+          if (inferredWaiting) {
+            nextWaiting[g.jid] = true;
+            if (!nextStreaming[g.jid]) {
+              const restored = restoreStreamingFromSession(g.jid);
+              if (restored) {
+                nextStreaming[g.jid] = restored;
+              }
+            }
+          } else {
+            delete nextWaiting[g.jid];
+            clearStreamingFromSession(g.jid);
+          }
+        }
+        return { waiting: nextWaiting, streaming: nextStreaming };
+      });
+    } catch {
+      // silent fail
+    }
+  },
+
   initWebSocket: () => {
     if (get().wsInitialized) return;
     set({ wsInitialized: true });
 
     initWebSocket();
+
+    // Restore waiting/streaming state on initial load and WS reconnect
+    get().restoreActiveState();
+    onWsOpen(() => {
+      get().restoreActiveState();
+    });
 
     onWsNewMessage((data: any) => {
       const { chatJid, message, agentId } = data;
@@ -492,6 +654,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
       } else {
         if (state === 'idle') {
+          clearStreamingFromSession(chatJid);
           set((s: ChatState) => ({
             waiting: { ...s.waiting, [chatJid]: false },
           }));
