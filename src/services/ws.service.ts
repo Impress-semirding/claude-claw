@@ -127,7 +127,7 @@ export function safeBroadcast(
 
 export function broadcastNewMessage(
   chatJid: string,
-  msg: Record<string, unknown> & { is_from_me?: boolean },
+  msg: any,
   agentId?: string,
   source?: string
 ): void {
@@ -144,29 +144,31 @@ export function broadcastNewMessage(
 export function broadcastStreamEvent(
   chatJid: string,
   event: StreamEvent,
-  _agentId?: string
+  agentId?: string
 ): void {
   const out: WsMessageOut = {
     type: 'stream_event',
     chatJid,
     event,
+    ...(agentId ? { agentId } : {}),
   };
   safeBroadcast(out, () => true);
 }
 
 export function broadcastRunnerState(
   chatJid: string,
-  state: 'idle' | 'running'
+  state: 'idle' | 'running',
+  agentId?: string
 ): void {
   safeBroadcast(
-    { type: 'runner_state', chatJid, state },
+    { type: 'runner_state', chatJid, state, ...(agentId ? { agentId } : {}) },
     () => true
   );
 }
 
-export function broadcastTyping(chatJid: string, isTyping: boolean): void {
+export function broadcastTyping(chatJid: string, isTyping: boolean, agentId?: string): void {
   safeBroadcast(
-    { type: 'typing', chatJid, isTyping },
+    { type: 'typing', chatJid, isTyping, ...(agentId ? { agentId } : {}) },
     () => true
   );
 }

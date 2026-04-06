@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware } from './auth.js';
-import { groupDb, messageDb, mcpServerDb } from '../db.js';
+import { groupDb, messageDb, mcpServerDb, agentDb } from '../db.js';
 import { randomUUID } from 'crypto';
 import { resolve } from 'path';
 import { existsSync, readFileSync } from 'fs';
@@ -34,7 +34,7 @@ async function handleMessageSend(
   chatJid: string,
   content: string,
   attachments?: unknown[],
-  _agentId?: string
+  agentId?: string
 ): Promise<SendMessageResult | { ok: false; error: string; status: number }> {
   // Check group
   const group = groupDb.findById(chatJid);
@@ -47,8 +47,8 @@ async function handleMessageSend(
     return { ok: false, error: 'Forbidden', status: 403 };
   }
 
-  // Get or create session for this group
-  const session = await getOrCreateSession(userId, chatJid);
+  // Get or create session for this group (scoped by agentId)
+  const session = await getOrCreateSession(userId, chatJid, undefined, agentId);
 
   const messageId = randomUUID();
   const timestamp = new Date().toISOString();
@@ -58,8 +58,9 @@ async function handleMessageSend(
     senderName: displayName,
     sourceKind: 'user_message',
     timestamp,
+    agentId,
   });
-  console.log('[messages] saved user message', { messageId, sessionId: session.sessionId, chatJid });
+  console.log('[messages] saved user message', { messageId, sessionId: session.sessionId, chatJid, agentId });
 
   // Broadcast new_message immediately
   const userMsgPayload = {
@@ -75,7 +76,7 @@ async function handleMessageSend(
     session_id: session.sessionId,
   };
   console.log('[messages] broadcasting user new_message', JSON.stringify(userMsgPayload));
-  broadcastNewMessage(chatJid, userMsgPayload);
+  broadcastNewMessage(chatJid, userMsgPayload, agentId);
 
   // Get enabled MCP servers for this user/group and shape them for the SDK
   const enabledMcpServers: Record<string, any> = {};
@@ -112,19 +113,30 @@ async function handleMessageSend(
     }
   }
 
+  // Add agent-specific prompt for conversation agents
+  if (agentId) {
+    const agent = agentDb.findById(agentId);
+    if (agent?.prompt) {
+      systemPrompt = systemPrompt
+        ? `${agent.prompt.trim()}\n\n${systemPrompt}`
+        : agent.prompt.trim();
+    }
+  }
+
   const mcpNames = Object.keys(enabledMcpServers);
   console.log('[messages] startQuery', {
     userId,
     chatJid,
     sessionId: session.sessionId,
+    agentId,
     promptLength: content.length,
     systemPromptLength: systemPrompt.length,
-    mcpCount: enabledMcpServers.length,
+    mcpCount: mcpNames.length,
     mcpNames,
   });
   console.log('[messages] mcpPayload:', JSON.stringify(enabledMcpServers));
 
-  startQuery(userId, chatJid, session.sessionId, content, enabledMcpServers, systemPrompt);
+  startQuery(userId, chatJid, session.sessionId, content, enabledMcpServers, systemPrompt, agentId);
 
   return { ok: true, messageId, timestamp };
 }
@@ -135,21 +147,23 @@ async function startQuery(
   sessionId: string,
   prompt: string,
   mcpServers: Record<string, unknown>,
-  systemPrompt?: string
+  systemPrompt?: string,
+  agentId?: string
 ): Promise<void> {
-  if (runningQueries.get(chatJid)) {
+  const queryKey = agentId ? `${chatJid}:${agentId}` : chatJid;
+  if (runningQueries.get(queryKey)) {
     return;
   }
 
-  runningQueries.set(chatJid, true);
-  broadcastRunnerState(chatJid, 'running');
-  broadcastTyping(chatJid, true);
+  runningQueries.set(queryKey, true);
+  broadcastRunnerState(chatJid, 'running', agentId);
+  broadcastTyping(chatJid, true, agentId);
 
   let assistantText = '';
   let turnId = `turn-${Date.now()}`;
 
   const mcpNames = Object.keys(mcpServers);
-  console.log('[messages] startQuery', { userId, chatJid, sessionId, promptLength: prompt.length, mcpCount: mcpNames.length, mcpNames });
+  console.log('[messages] startQuery', { userId, chatJid, sessionId, agentId, promptLength: prompt.length, mcpCount: mcpNames.length, mcpNames });
 
   try {
     const stream = querySession({
@@ -175,27 +189,27 @@ async function startQuery(
           eventType: 'text_delta',
           text: ev.content,
           turnId,
-        });
-        broadcastTyping(chatJid, false);
+        }, agentId);
+        broadcastTyping(chatJid, false, agentId);
       } else if (ev.type === 'tool') {
         broadcastStreamEvent(chatJid, {
           eventType: 'tool_use_start',
           toolName: ev.tool_name || 'unknown',
           toolUseId: randomUUID(),
           turnId,
-        });
-        broadcastTyping(chatJid, false);
+        }, agentId);
+        broadcastTyping(chatJid, false, agentId);
       } else if (ev.type === 'error') {
         broadcastStreamEvent(chatJid, {
           eventType: 'error',
           error: ev.error || 'Unknown error',
           turnId,
-        });
+        }, agentId);
       } else if (ev.type === 'complete') {
         broadcastStreamEvent(chatJid, {
           eventType: 'complete',
           turnId,
-        });
+        }, agentId);
       }
     }
 
@@ -217,10 +231,11 @@ async function startQuery(
           timestamp: assistantTimestamp,
           sourceKind: 'sdk_final',
           finalizationReason: 'completed',
+          agentId,
         },
       });
 
-      console.log('[messages] broadcasting new_message for assistant reply, chatJid=', chatJid, 'msgId=', assistantMsgId);
+      console.log('[messages] broadcasting new_message for assistant reply, chatJid=', chatJid, 'agentId=', agentId, 'msgId=', assistantMsgId);
       broadcastNewMessage(chatJid, {
         id: assistantMsgId,
         chat_jid: chatJid,
@@ -234,7 +249,7 @@ async function startQuery(
         sdk_message_uuid: null,
         source_kind: 'sdk_final',
         finalization_reason: 'completed',
-      });
+      }, agentId);
       console.log('[messages] broadcast complete');
     } else {
       console.log('[messages] no assistant text to save, text length=0');
@@ -246,11 +261,11 @@ async function startQuery(
       eventType: 'error',
       error: errorMsg,
       turnId,
-    });
+    }, agentId);
   } finally {
-    runningQueries.delete(chatJid);
-    broadcastRunnerState(chatJid, 'idle');
-    broadcastTyping(chatJid, false);
+    runningQueries.delete(queryKey);
+    broadcastRunnerState(chatJid, 'idle', agentId);
+    broadcastTyping(chatJid, false, agentId);
   }
 }
 

@@ -9,6 +9,7 @@ import { api } from '../api/client.js';
 import type { StreamEvent } from '../types.js';
 import {
   wsSendMessage,
+  wsSendAgentMessage,
   onWsNewMessage,
   onWsStreamEvent,
   onWsRunnerState,
@@ -104,6 +105,12 @@ interface ChatState {
   error: string | null;
   streaming: Record<string, StreamingState>;
   wsInitialized: boolean;
+  agents: Record<string, AgentInfo[]>;
+  activeAgentTab: Record<string, string | null>;
+  agentMessages: Record<string, Message[]>;
+  agentWaiting: Record<string, boolean>;
+  agentHasMore: Record<string, boolean>;
+  agentStreaming: Record<string, StreamingState>;
   loadGroups: () => Promise<void>;
   selectGroup: (id: string) => void;
   loadMessages: (id: string, opts?: LoadMessagesOpts) => Promise<void>;
@@ -116,6 +123,10 @@ interface ChatState {
   clearHistory: (id: string) => Promise<void>;
   handleStreamEvent: (id: string, event: StreamEvent) => void;
   initWebSocket: () => void;
+  loadAgents: (groupId: string) => Promise<void>;
+  selectAgentTab: (groupId: string, agentId: string | null) => void;
+  loadAgentMessages: (groupId: string, agentId: string, opts?: LoadMessagesOpts) => Promise<void>;
+  sendAgentMessage: (groupId: string, agentId: string, content: string, attachments?: unknown[]) => Promise<void>;
 }
 
 const DEFAULT_STREAMING_STATE: StreamingState = {
@@ -168,6 +179,49 @@ function mapMessage(msg: any): Message {
   };
 }
 
+function reduceStreamEvent(prev: StreamingState, event: StreamEvent): StreamingState {
+  const next = { ...prev };
+  switch (event.eventType) {
+    case 'text_delta':
+      next.partialText += event.text || '';
+      next.isThinking = false;
+      break;
+    case 'thinking_delta':
+      next.thinkingText += event.text || '';
+      next.isThinking = true;
+      break;
+    case 'tool_use_start':
+      next.activeTools.push({
+        toolName: event.toolName || 'unknown',
+        toolUseId: event.toolUseId || '',
+        startTime: Date.now(),
+        parentToolUseId: event.parentToolUseId,
+        isNested: event.isNested,
+        skillName: event.skillName,
+        toolInputSummary: event.toolInputSummary,
+      });
+      next.recentEvents.push({
+        id: `${Date.now()}-${Math.random()}`,
+        timestamp: Date.now(),
+        text: `Tool: ${event.toolName}`,
+        kind: 'tool',
+      });
+      break;
+    case 'tool_use_end':
+      next.activeTools = next.activeTools.filter((t: any) => t.toolUseId !== event.toolUseId);
+      break;
+    case 'status':
+      next.systemStatus = event.statusText || null;
+      break;
+    case 'complete':
+      break;
+    case 'error':
+      next.systemStatus = event.error || 'Error';
+      break;
+  }
+  return next;
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   groups: {},
   currentGroup: null,
@@ -178,6 +232,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   error: null,
   streaming: {},
   wsInitialized: false,
+  agents: {},
+  activeAgentTab: {},
+  agentMessages: {},
+  agentWaiting: {},
+  agentHasMore: {},
+  agentStreaming: {},
 
   loadGroups: async () => {
     set({ loading: true });
@@ -358,48 +418,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   handleStreamEvent: (id: string, event: StreamEvent) => {
     set((s: ChatState) => {
       const prev = s.streaming[id] || { ...DEFAULT_STREAMING_STATE };
-      const next = { ...prev };
-
-      switch (event.eventType) {
-        case 'text_delta':
-          next.partialText += event.text || '';
-          next.isThinking = false;
-          break;
-        case 'thinking_delta':
-          next.thinkingText += event.text || '';
-          next.isThinking = true;
-          break;
-        case 'tool_use_start':
-          next.activeTools.push({
-            toolName: event.toolName || 'unknown',
-            toolUseId: event.toolUseId || '',
-            startTime: Date.now(),
-            parentToolUseId: event.parentToolUseId,
-            isNested: event.isNested,
-            skillName: event.skillName,
-            toolInputSummary: event.toolInputSummary,
-          });
-          next.recentEvents.push({
-            id: `${Date.now()}-${Math.random()}`,
-            timestamp: Date.now(),
-            text: `Tool: ${event.toolName}`,
-            kind: 'tool',
-          });
-          break;
-        case 'tool_use_end':
-          next.activeTools = next.activeTools.filter((t: any) => t.toolUseId !== event.toolUseId);
-          break;
-        case 'status':
-          next.systemStatus = event.statusText || null;
-          break;
-        case 'complete':
-          // streaming done, but waiting remains until new_message arrives
-          break;
-        case 'error':
-          next.systemStatus = event.error || 'Error';
-          break;
-      }
-
+      const next = reduceStreamEvent(prev, event);
       return {
         streaming: { ...s.streaming, [id]: next },
         waiting: { ...s.waiting, [id]: true },
@@ -414,37 +433,156 @@ export const useChatStore = create<ChatState>((set, get) => ({
     initWebSocket();
 
     onWsNewMessage((data: any) => {
-      const { chatJid, message } = data;
-      set((s: ChatState) => {
-        const list = s.messages[chatJid] || [];
-        const mapped = mapMessage(message);
-        const isAssistant = mapped.is_from_me;
-        return {
-          messages: {
-            ...s.messages,
-            [chatJid]: [...list, mapped],
-          },
-          waiting: { ...s.waiting, [chatJid]: isAssistant ? false : s.waiting[chatJid] },
-        };
-      });
+      const { chatJid, message, agentId } = data;
+      if (agentId) {
+        const key = `${chatJid}:${agentId}`;
+        set((s: ChatState) => {
+          const list = s.agentMessages[key] || [];
+          const mapped = mapMessage(message);
+          const isAssistant = mapped.is_from_me;
+          return {
+            agentMessages: {
+              ...s.agentMessages,
+              [key]: [...list, mapped],
+            },
+            agentWaiting: { ...s.agentWaiting, [key]: isAssistant ? false : s.agentWaiting[key] },
+          };
+        });
+      } else {
+        set((s: ChatState) => {
+          const list = s.messages[chatJid] || [];
+          const mapped = mapMessage(message);
+          const isAssistant = mapped.is_from_me;
+          return {
+            messages: {
+              ...s.messages,
+              [chatJid]: [...list, mapped],
+            },
+            waiting: { ...s.waiting, [chatJid]: isAssistant ? false : s.waiting[chatJid] },
+          };
+        });
+      }
     });
 
     onWsStreamEvent((data: any) => {
-      get().handleStreamEvent(data.chatJid, data.event);
+      const { chatJid, event, agentId } = data;
+      if (agentId) {
+        const key = `${chatJid}:${agentId}`;
+        set((s: ChatState) => {
+          const prev = s.agentStreaming[key] || { ...DEFAULT_STREAMING_STATE };
+          const next = reduceStreamEvent(prev, event);
+          return {
+            agentStreaming: { ...s.agentStreaming, [key]: next },
+            agentWaiting: { ...s.agentWaiting, [key]: true },
+          };
+        });
+      } else {
+        get().handleStreamEvent(chatJid, event);
+      }
     });
 
     onWsRunnerState((data: any) => {
-      if (data.state === 'idle') {
-        set((s: ChatState) => ({
-          waiting: { ...s.waiting, [data.chatJid]: false },
-        }));
+      const { chatJid, state, agentId } = data;
+      if (agentId) {
+        const key = `${chatJid}:${agentId}`;
+        if (state === 'idle') {
+          set((s: ChatState) => ({
+            agentWaiting: { ...s.agentWaiting, [key]: false },
+          }));
+        }
+      } else {
+        if (state === 'idle') {
+          set((s: ChatState) => ({
+            waiting: { ...s.waiting, [chatJid]: false },
+          }));
+        }
       }
     });
 
     onWsTyping((data: any) => {
-      set((s: ChatState) => ({
-        waiting: { ...s.waiting, [data.chatJid]: data.isTyping },
-      }));
+      const { chatJid, isTyping, agentId } = data;
+      if (agentId) {
+        const key = `${chatJid}:${agentId}`;
+        set((s: ChatState) => ({
+          agentWaiting: { ...s.agentWaiting, [key]: isTyping },
+        }));
+      } else {
+        set((s: ChatState) => ({
+          waiting: { ...s.waiting, [chatJid]: isTyping },
+        }));
+      }
     });
+  },
+
+  loadAgents: async (groupId: string) => {
+    try {
+      const data = await api.get<{ agents: AgentInfo[] }>(`/api/groups/${groupId}/agents`);
+      set((s: ChatState) => ({
+        agents: { ...s.agents, [groupId]: data.agents || [] },
+        error: null,
+      }));
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+
+  selectAgentTab: (groupId: string, agentId: string | null) => {
+    set((s: ChatState) => ({
+      activeAgentTab: { ...s.activeAgentTab, [groupId]: agentId },
+    }));
+  },
+
+  loadAgentMessages: async (groupId: string, agentId: string, opts?: LoadMessagesOpts) => {
+    try {
+      const opt = opts || {};
+      const limit = opt.limit || 50;
+      const before = opt.before || '';
+      const after = opt.after || '';
+      let url = `/api/groups/${groupId}/messages?agentId=${encodeURIComponent(agentId)}&limit=${limit}`;
+      if (before) url += `&before=${encodeURIComponent(before)}`;
+      if (after) url += `&after=${encodeURIComponent(after)}`;
+      const data = await api.get<{ messages: any[]; hasMore: boolean }>(url);
+      const msgs = data.messages.map(mapMessage);
+      const key = `${groupId}:${agentId}`;
+      set((s: ChatState) => ({
+        agentMessages: { ...s.agentMessages, [key]: msgs },
+        agentHasMore: { ...s.agentHasMore, [key]: data.hasMore },
+        error: null,
+      }));
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+
+  sendAgentMessage: async (groupId: string, agentId: string, content: string, attachments?: unknown[]) => {
+    try {
+      const userMsg: Message = {
+        id: `temp-${Date.now()}`,
+        chat_jid: groupId,
+        sender: 'me',
+        sender_name: 'Me',
+        content,
+        timestamp: new Date().toISOString(),
+        is_from_me: false,
+      };
+      const key = `${groupId}:${agentId}`;
+      set((s: ChatState) => ({
+        agentMessages: {
+          ...s.agentMessages,
+          [key]: [...(s.agentMessages[key] || []), userMsg],
+        },
+        agentWaiting: { ...s.agentWaiting, [key]: true },
+        agentStreaming: {
+          ...s.agentStreaming,
+          [key]: { ...DEFAULT_STREAMING_STATE },
+        },
+      }));
+      wsSendAgentMessage(groupId, agentId, content, attachments);
+    } catch (err) {
+      set({
+        error: err instanceof Error ? err.message : String(err),
+        agentWaiting: { ...get().agentWaiting, [key]: false },
+      });
+    }
   },
 }));

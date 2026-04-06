@@ -6,6 +6,7 @@ export interface ISessionInfo {
   sessionId: string;
   userId: string;
   workspace: string;
+  agentId?: string;
   sdkSessionId?: string;
   configDir: string;
   workDir: string;

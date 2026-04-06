@@ -117,13 +117,18 @@ export function closeWebSocket() {
   wsClient.disconnect();
 }
 
-export function wsSendMessage(chatJid: string, content: string, attachments?: unknown[]) {
+export function wsSendMessage(chatJid: string, content: string, attachments?: unknown[], agentId?: string) {
   wsClient.send({
     type: 'send_message',
     chatJid,
     content,
     attachments,
+    ...(agentId ? { agentId } : {}),
   });
+}
+
+export function wsSendAgentMessage(chatJid: string, agentId: string, content: string, attachments?: unknown[]) {
+  wsSendMessage(chatJid, content, attachments, agentId);
 }
 
 export function wsStopGroup(chatJid: string) {

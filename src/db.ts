@@ -24,7 +24,7 @@ const db: Database.Database = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
 // Schema version for migrations
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 // Initialize schema
 export function initSchema() {
@@ -77,6 +77,7 @@ export function initSchema() {
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
       workspace TEXT NOT NULL,
+      agent_id TEXT,
       sdk_session_id TEXT,
       config_dir TEXT NOT NULL,
       work_dir TEXT NOT NULL,
@@ -344,6 +345,10 @@ function runMigrations() {
     try { db.exec(`ALTER TABLE mcp_servers ADD COLUMN type TEXT DEFAULT 'stdio'`); } catch { /* may already exist */ }
     try { db.exec(`ALTER TABLE mcp_servers ADD COLUMN url TEXT`); } catch { /* may already exist */ }
     try { db.exec(`ALTER TABLE mcp_servers ADD COLUMN headers TEXT`); } catch { /* may already exist */ }
+  }
+
+  if (currentVersion < 4) {
+    try { db.exec(`ALTER TABLE sessions ADD COLUMN agent_id TEXT`); } catch { /* may already exist */ }
   }
 
   db.prepare('INSERT OR REPLACE INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
@@ -664,6 +669,7 @@ export const sessionDb = {
     id: string;
     userId: string;
     workspace: string;
+    agentId?: string | null;
     sdkSessionId?: string;
     configDir: string;
     workDir: string;
@@ -672,13 +678,14 @@ export const sessionDb = {
   }) {
     const now = Date.now();
     const stmt = db.prepare(`
-      INSERT INTO sessions (id, user_id, workspace, sdk_session_id, config_dir, work_dir, tmp_dir, status, created_at, last_active_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO sessions (id, user_id, workspace, agent_id, sdk_session_id, config_dir, work_dir, tmp_dir, status, created_at, last_active_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       session.id,
       session.userId,
       session.workspace,
+      session.agentId || null,
       session.sdkSessionId || null,
       session.configDir,
       session.workDir,
@@ -691,6 +698,7 @@ export const sessionDb = {
       id: session.id,
       userId: session.userId,
       workspace: session.workspace,
+      agentId: session.agentId || null,
       sdkSessionId: session.sdkSessionId,
       configDir: session.configDir,
       workDir: session.workDir,
@@ -710,6 +718,7 @@ export const sessionDb = {
       id: row.id,
       userId: row.user_id,
       workspace: row.workspace,
+      agentId: row.agent_id,
       sdkSessionId: row.sdk_session_id,
       configDir: row.config_dir,
       workDir: row.work_dir,
@@ -732,6 +741,7 @@ export const sessionDb = {
       id: row.id,
       userId: row.user_id,
       workspace: row.workspace,
+      agentId: row.agent_id,
       sdkSessionId: row.sdk_session_id,
       configDir: row.config_dir,
       workDir: row.work_dir,
@@ -748,6 +758,7 @@ export const sessionDb = {
       id: row.id,
       userId: row.user_id,
       workspace: row.workspace,
+      agentId: row.agent_id,
       sdkSessionId: row.sdk_session_id,
       configDir: row.config_dir,
       workDir: row.work_dir,
@@ -766,6 +777,29 @@ export const sessionDb = {
       id: row.id,
       userId: row.user_id,
       workspace: row.workspace,
+      agentId: row.agent_id,
+      sdkSessionId: row.sdk_session_id,
+      configDir: row.config_dir,
+      workDir: row.work_dir,
+      tmpDir: row.tmp_dir,
+      status: row.status,
+      createdAt: row.created_at,
+      lastActiveAt: row.last_active_at,
+    }));
+  },
+
+  findByWorkspaceAndAgent(userId: string, workspace: string, agentId?: string | null) {
+    const sql = agentId
+      ? 'SELECT * FROM sessions WHERE user_id = ? AND workspace = ? AND agent_id = ?'
+      : "SELECT * FROM sessions WHERE user_id = ? AND workspace = ? AND (agent_id IS NULL OR agent_id = '')";
+    const rows = db
+      .prepare(sql)
+      .all(...(agentId ? [userId, workspace, agentId] : [userId, workspace])) as Record<string, unknown>[];
+    return rows.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      workspace: row.workspace,
+      agentId: row.agent_id,
       sdkSessionId: row.sdk_session_id,
       configDir: row.config_dir,
       workDir: row.work_dir,

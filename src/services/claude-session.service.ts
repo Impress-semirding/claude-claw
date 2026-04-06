@@ -120,7 +120,8 @@ function copyTemplateFiles(templateDir: string, targetDir: string) {
 export async function createSession(
   userId: string,
   workspace: string,
-  sessionId: string = uuidv4()
+  sessionId: string = uuidv4(),
+  agentId?: string
 ): Promise<ISessionInfo> {
   const key = sessionKey(userId, workspace, sessionId);
 
@@ -137,6 +138,7 @@ export async function createSession(
     sessionId,
     userId,
     workspace,
+    agentId,
     configDir: dirs.relativeConfigDir,
     workDir: dirs.relativeWorkDir,
     tmpDir: dirs.relativeTmpDir,
@@ -150,6 +152,7 @@ export async function createSession(
     id: sessionId,
     userId,
     workspace,
+    agentId,
     configDir: dirs.relativeConfigDir,
     workDir: dirs.relativeWorkDir,
     tmpDir: dirs.relativeTmpDir,
@@ -172,7 +175,8 @@ export function getSession(userId: string, workspace: string, sessionId: string)
 export async function getOrCreateSession(
   userId: string,
   workspace: string,
-  sessionId?: string
+  sessionId?: string,
+  agentId?: string
 ): Promise<ISessionInfo> {
   // 如果显式传了 sessionId，精确匹配或新建
   if (sessionId) {
@@ -180,12 +184,15 @@ export async function getOrCreateSession(
     if (existing) {
       return existing;
     }
-    return createSession(userId, workspace, sessionId);
+    return createSession(userId, workspace, sessionId, agentId);
   }
 
-  // 未传 sessionId 时，复用该用户在该 workspace 下最新的 active session
+  // 未传 sessionId 时，复用该用户在该 workspace + agentId 下最新的 active session
   const candidates = listUserSessions(userId).filter(
-    (s) => s.workspace === workspace && s.status !== 'destroyed'
+    (s) =>
+      s.workspace === workspace &&
+      s.status !== 'destroyed' &&
+      (s.agentId || undefined) === (agentId || undefined)
   );
   if (candidates.length > 0) {
     return candidates[0];
@@ -193,7 +200,7 @@ export async function getOrCreateSession(
 
   // 完全没有则新建
   const sid = uuidv4();
-  return createSession(userId, workspace, sid);
+  return createSession(userId, workspace, sid, agentId);
 }
 
 // List user sessions
@@ -575,6 +582,7 @@ export function loadSessionsFromDb() {
         sessionId: row.id as string,
         userId: row.userId as string,
         workspace: row.workspace as string,
+        agentId: (row.agentId as string | undefined) || undefined,
         sdkSessionId: row.sdkSessionId as string | undefined,
         configDir: row.configDir as string,
         workDir: row.workDir as string,

@@ -314,11 +314,16 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
       const before = (request.query as any).before as string | undefined;
       const after = (request.query as any).after as string | undefined;
       const limit = parseInt((request.query as any).limit || '50', 10);
+      const agentId = (request.query as any).agentId as string | undefined;
 
-      // 找到该群组的所有 session（不限于当前用户，包含所有成员）
+      // 找到该群组的 session（按 agentId 过滤）
       const allSessions = sessionDb.findByUser('');
-      const groupSessions = allSessions.filter((s: any) => s.workspace === jid);
-      console.log('[groups/messages] jid=', jid, 'groupSessions=', groupSessions.length, 'after=', after, 'before=', before, 'limit=', limit);
+      const groupSessions = allSessions.filter((s: any) => {
+        if (s.workspace !== jid) return false;
+        if (agentId) return s.agent_id === agentId || s.agentId === agentId;
+        return !s.agent_id && !s.agentId;
+      });
+      console.log('[groups/messages] jid=', jid, 'agentId=', agentId, 'groupSessions=', groupSessions.length, 'after=', after, 'before=', before, 'limit=', limit);
 
       // 获取所有消息
       let allMessages: any[] = [];
