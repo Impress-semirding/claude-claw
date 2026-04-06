@@ -3,7 +3,7 @@ import { authMiddleware } from './auth.js';
 import { groupDb, sessionDb, messageDb, userDb, groupEnvDb } from '../db.js';
 import { randomUUID } from 'crypto';
 import { mkdir, rm } from 'fs/promises';
-import { resolve } from 'path';
+import { resolve, join } from 'path';
 import { appConfig } from '../config.js';
 import { getOrCreateSession, destroySession, abortQuery } from '../services/claude-session.service.js';
 import { broadcastGroupCreated } from '../services/ws.service.js';
@@ -11,6 +11,7 @@ import {
   stopWorkspace,
   waitForWorkspaceExit,
 } from '../services/process-registry.js';
+import { validateAndResolvePath, isSystemPath } from './files.js';
 
 // Helper: 转换 Group 为前端格式
 function toGroupInfo(group: any, userId: string): any {
@@ -257,15 +258,22 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
           abortQuery(s.userId, s.workspace, s.id);
           // 删除 session 的消息
           messageDb.deleteBySession(s.id);
-          // 删除 session 目录（workDir 是相对路径，需解析为绝对路径）
-          if (s.workDir) {
+          // 删除 session 私有目录（configDir / tmpDir），workDir 是共享的，稍后统一删
+          if (s.configDir) {
             try {
-              await rm(resolve(appConfig.claude.baseDir, s.workDir as string), { recursive: true, force: true });
+              await rm(resolve(appConfig.claude.baseDir, s.configDir as string), { recursive: true, force: true });
             } catch {
               // ignore
             }
-            parentDirsToClean.add(resolve(appConfig.claude.baseDir, s.userId, jid));
           }
+          if (s.tmpDir) {
+            try {
+              await rm(resolve(appConfig.claude.baseDir, s.tmpDir as string), { recursive: true, force: true });
+            } catch {
+              // ignore
+            }
+          }
+          parentDirsToClean.add(resolve(appConfig.claude.baseDir, s.userId, jid));
           sessionDb.delete(s.id);
         }
       }
@@ -279,10 +287,10 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
         }
       }
 
-      // 删除群组工作目录（data/sessions/group-xxxx）
-      const workDir = resolve(appConfig.paths.sessions, group.folder || group.id);
+      // 删除群组共享工作目录（data/sessions/group-xxxx）
+      const groupWorkDir = resolve(appConfig.claude.baseDir, group.folder || group.id);
       try {
-        await rm(workDir, { recursive: true, force: true });
+        await rm(groupWorkDir, { recursive: true, force: true });
       } catch {
         // ignore
       }
@@ -363,6 +371,44 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
       return reply.send({ messages, hasMore });
     } catch (error) {
       return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to load messages' });
+    }
+  });
+
+  // POST /api/groups/:jid/directories - 创建目录
+  fastify.post('/:jid/directories', { preHandler: authMiddleware }, async (request, reply) => {
+    const user = request.user as { userId: string; email: string; role: string };
+    const jid = (request.params as any).jid as string;
+
+    try {
+      const group = groupDb.findById(jid);
+      if (!group) {
+        return reply.status(404).send({ error: 'Group not found' });
+      }
+
+      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      const body = request.body as any;
+      const parentPath = body.path || '';
+      const dirName = body.name;
+
+      if (!dirName || typeof dirName !== 'string') {
+        return reply.status(400).send({ error: 'Directory name is required' });
+      }
+
+      const folder = group.folder || jid;
+      const targetPath = validateAndResolvePath(folder, join(parentPath, dirName));
+      if (isSystemPath(join(parentPath, dirName))) {
+        return reply.status(403).send({ error: 'Cannot create directory in system path' });
+      }
+
+      await mkdir(targetPath, { recursive: true });
+      return reply.send({ success: true });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to create directory';
+      const isSafe = ['Path traversal detected', 'Symlink traversal detected'].includes(msg);
+      return reply.status(isSafe ? 400 : 500).send({ error: msg });
     }
   });
 

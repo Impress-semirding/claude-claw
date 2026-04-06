@@ -3,7 +3,7 @@
  */
 
 import { create } from 'zustand';
-import { api } from '../api/client.js';
+import { api, apiFetch } from '../api/client.js';
 
 export interface FileEntry {
   name: string;
@@ -11,6 +11,7 @@ export interface FileEntry {
   type: 'file' | 'directory';
   size: number;
   modified_at: string;
+  isSystem: boolean;
 }
 
 interface FilesState {
@@ -23,10 +24,12 @@ interface FilesState {
   readFile: (jid: string, filePath: string) => Promise<string>;
   writeFile: (jid: string, filePath: string, content: string) => Promise<boolean>;
   deleteFile: (jid: string, filePath: string) => Promise<boolean>;
+  uploadFiles: (jid: string, files: File[], targetPath?: string) => Promise<boolean>;
+  navigateTo: (jid: string, path: string) => void;
 }
 
 function encodePath(filePath: string): string {
-  return Buffer.from(filePath).toString('base64');
+  return Buffer.from(filePath).toString('base64url');
 }
 
 export const useFilesStore = create<FilesState>((set, get) => ({
@@ -94,5 +97,28 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       set({ error: err instanceof Error ? err.message : String(err) });
       return false;
     }
+  },
+
+  uploadFiles: async (jid: string, files: File[], targetPath = '/') => {
+    try {
+      const formData = new FormData();
+      files.forEach((file) => formData.append('files', file));
+      await apiFetch(`/api/groups/${jid}/files?path=${encodeURIComponent(targetPath)}`, {
+        method: 'POST',
+        body: formData,
+      });
+      await get().loadFiles(jid, targetPath);
+      return true;
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : String(err) });
+      return false;
+    }
+  },
+
+  navigateTo: (jid: string, path: string) => {
+    set((s) => ({
+      currentPath: { ...s.currentPath, [jid]: path },
+    }));
+    get().loadFiles(jid, path);
   },
 }));

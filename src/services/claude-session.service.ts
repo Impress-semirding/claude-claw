@@ -68,10 +68,15 @@ function sessionKey(userId: string, workspace: string, sessionId: string): strin
 
 // Create directory structure for session
 function createSessionDirectories(userId: string, workspace: string, sessionId: string) {
-  const relativeWorkDir = join(userId, workspace, sessionId);
-  const relativeConfigDir = join(relativeWorkDir, '.claude');
-  const relativeTmpDir = join(relativeWorkDir, 'tmp');
-  const relativeUploadDir = join(relativeWorkDir, 'upload-files');
+  const group = groupDb.findById(workspace);
+  const folder = group?.folder || workspace;
+
+  // Shared group workspace for all sessions in this group
+  const relativeWorkDir = folder;
+  // Session-private directories remain isolated
+  const relativeConfigDir = join(userId, workspace, sessionId, '.claude');
+  const relativeTmpDir = join(userId, workspace, sessionId, 'tmp');
+  const relativeUploadDir = join(userId, workspace, sessionId, 'upload-files');
 
   const absWorkDir = resolve(appConfig.claude.baseDir, relativeWorkDir);
   const absConfigDir = resolve(appConfig.claude.baseDir, relativeConfigDir);
@@ -84,7 +89,7 @@ function createSessionDirectories(userId: string, workspace: string, sessionId: 
   mkdirSync(absTmpDir, { recursive: true });
   mkdirSync(absUploadDir, { recursive: true });
 
-  // Copy template if exists
+  // Copy template if exists (into shared workspace)
   if (appConfig.claude.templateDir && existsSync(appConfig.claude.templateDir)) {
     copyTemplateFiles(appConfig.claude.templateDir, absWorkDir);
   }
@@ -235,11 +240,15 @@ export function destroySession(userId: string, workspace: string, sessionId: str
   // Update database
   sessionDb.update(sessionId, { status: 'destroyed' });
 
-  // Clean up directories (optional - can be done lazily)
+  // Clean up isolated session directories only; workDir is shared per group
   try {
-    const absWorkDir = resolve(appConfig.claude.baseDir, session.workDir);
-    if (existsSync(absWorkDir)) {
-      rmSync(absWorkDir, { recursive: true, force: true });
+    const absConfigDir = resolve(appConfig.claude.baseDir, session.configDir);
+    const absTmpDir = resolve(appConfig.claude.baseDir, session.tmpDir);
+    if (existsSync(absConfigDir)) {
+      rmSync(absConfigDir, { recursive: true, force: true });
+    }
+    if (existsSync(absTmpDir)) {
+      rmSync(absTmpDir, { recursive: true, force: true });
     }
   } catch (error) {
     console.warn('Failed to cleanup session directory:', error);
@@ -286,7 +295,7 @@ function syncSkillsToSession(userId: string, workspace: string, sessionConfigDir
   // Sync workspace-level skills
   const group = groupDb.findById(workspace);
   if (group) {
-    const workspaceSkillsDir = resolve(appConfig.paths.sessions, group.folder || group.id, '.claude', 'skills');
+    const workspaceSkillsDir = resolve(appConfig.claude.baseDir, group.folder || group.id, '.claude', 'skills');
     if (existsSync(workspaceSkillsDir)) {
       for (const entry of readdirSync(workspaceSkillsDir, { withFileTypes: true })) {
         if (!entry.isDirectory()) continue;
@@ -337,6 +346,14 @@ export async function* querySession({
   session.status = 'running';
   session.lastActiveAt = Date.now();
   sessionDb.update(sessionId, { status: 'running', last_active_at: session.lastActiveAt });
+
+  // Migrate old sessions: workDir should be the shared group folder, not an isolated path
+  const group = groupDb.findById(workspace);
+  const expectedWorkDir = group?.folder || workspace;
+  if (session.workDir !== expectedWorkDir) {
+    session.workDir = expectedWorkDir;
+    sessionDb.update(sessionId, { workDir: expectedWorkDir });
+  }
 
   // Build absolute paths
   const absWorkDir = resolve(appConfig.claude.baseDir, session.workDir);
@@ -607,6 +624,9 @@ export function loadSessionsFromDb() {
   for (const row of dbSessions) {
     if (row.status !== 'destroyed') {
       const key = sessionKey(row.userId as string, row.workspace as string, row.id as string);
+      const group = groupDb.findById(row.workspace as string);
+      const expectedWorkDir = group?.folder || (row.workspace as string);
+      const workDir = (row.workDir as string) === expectedWorkDir ? (row.workDir as string) : expectedWorkDir;
       sessions.set(key, {
         sessionId: row.id as string,
         userId: row.userId as string,
@@ -614,7 +634,7 @@ export function loadSessionsFromDb() {
         agentId: (row.agentId as string | undefined) || undefined,
         sdkSessionId: row.sdkSessionId as string | undefined,
         configDir: row.configDir as string,
-        workDir: row.workDir as string,
+        workDir,
         tmpDir: row.tmpDir as string,
         createdAt: row.createdAt as number,
         lastActiveAt: row.lastActiveAt as number,
