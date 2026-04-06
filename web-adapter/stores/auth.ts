@@ -104,7 +104,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   changePassword: async (currentPassword: string, newPassword: string) => {
-    await api.put('/api/auth/password', { currentPassword, newPassword });
+    await api.put('/api/auth/password', { current_password: currentPassword, new_password: newPassword });
   },
 
   updateProfile: async (payload) => {

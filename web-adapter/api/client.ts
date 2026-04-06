@@ -30,9 +30,12 @@ export async function apiFetch<T>(path: string, options?: RequestInit & { timeou
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('claw_token') : null;
   const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
+  const hasBody = fetchOptions.body !== undefined && fetchOptions.body !== null;
   const headers = isFormData
     ? { ...authHeaders, ...fetchOptions.headers }
-    : { 'Content-Type': 'application/json', ...authHeaders, ...fetchOptions.headers };
+    : hasBody
+      ? { 'Content-Type': 'application/json', ...authHeaders, ...fetchOptions.headers }
+      : { ...authHeaders, ...fetchOptions.headers };
 
   let res: Response;
   try {
