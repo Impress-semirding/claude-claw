@@ -157,17 +157,17 @@ export default async function claudeRoutes(fastify: FastifyInstance) {
       const session = await getOrCreateSession(user.userId, data.workspace, data.sessionId);
 
       // Get MCP servers
-      const mcpServers: unknown[] = [];
+      const mcpServers: Record<string, unknown> = {};
       if (data.mcpServers && data.mcpServers.length > 0) {
         for (const serverId of data.mcpServers) {
           const server = mcpServerDb.findById(serverId);
           if (server && server.enabled) {
-            mcpServers.push({
-              name: server.name,
+            mcpServers[server.name] = {
+              type: server.type || 'stdio',
               command: server.command,
-              args: server.args,
-              env: server.env,
-            });
+              args: server.args || [],
+              env: server.env || {},
+            };
           }
         }
       }
@@ -235,7 +235,7 @@ export default async function claudeRoutes(fastify: FastifyInstance) {
         workspace,
         sessionId: session.sessionId,
         prompt,
-        mcpServers: [],
+        mcpServers: {},
         systemPrompt,
       });
 
@@ -267,17 +267,17 @@ export default async function claudeRoutes(fastify: FastifyInstance) {
       const session = await getOrCreateSession(user.userId, data.workspace, data.sessionId);
 
       // Get MCP servers
-      const mcpServers: unknown[] = [];
+      const mcpServers: Record<string, unknown> = {};
       if (data.mcpServers && data.mcpServers.length > 0) {
         for (const serverId of data.mcpServers) {
           const server = mcpServerDb.findById(serverId);
           if (server && server.enabled) {
-            mcpServers.push({
-              name: server.name,
+            mcpServers[server.name] = {
+              type: server.type || 'stdio',
               command: server.command,
-              args: server.args,
-              env: server.env,
-            });
+              args: server.args || [],
+              env: server.env || {},
+            };
           }
         }
       }

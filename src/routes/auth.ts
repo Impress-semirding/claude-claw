@@ -103,11 +103,11 @@ function buildSetupStatus() {
 }
 
 function setSessionCookie(_c: any, token: string): string {
-  return `session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${30 * 24 * 60 * 60}`;
+  return `session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 24 * 60 * 60}`;
 }
 
 function clearSessionCookie(_c: any): string {
-  return `session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`;
+  return `session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
 }
 
 // Auth middleware - cookie or Bearer

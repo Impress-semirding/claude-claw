@@ -54,10 +54,15 @@ async function handleMessageSend(
   const timestamp = new Date().toISOString();
 
   // Save user message
-  saveUserMessage(userId, session.sessionId, content, attachments as any);
+  saveUserMessage(userId, session.sessionId, content, attachments as any, messageId, {
+    senderName: displayName,
+    sourceKind: 'user_message',
+    timestamp,
+  });
+  console.log('[messages] saved user message', { messageId, sessionId: session.sessionId, chatJid });
 
   // Broadcast new_message immediately
-  broadcastNewMessage(chatJid, {
+  const userMsgPayload = {
     id: messageId,
     chat_jid: chatJid,
     sender: userId,
@@ -66,28 +71,30 @@ async function handleMessageSend(
     timestamp,
     is_from_me: false,
     attachments: attachments ? JSON.stringify(attachments) : undefined,
-  });
+    source_kind: 'user_message',
+    session_id: session.sessionId,
+  };
+  console.log('[messages] broadcasting user new_message', JSON.stringify(userMsgPayload));
+  broadcastNewMessage(chatJid, userMsgPayload);
 
   // Get enabled MCP servers for this user/group and shape them for the SDK
-  const enabledMcpServers = mcpServerDb.findEnabled().map((s) => {
+  const enabledMcpServers: Record<string, any> = {};
+  for (const s of mcpServerDb.findEnabled()) {
     if (s.type === 'sse' || s.url) {
-      return {
-        [s.name]: {
-          type: 'sse',
-          url: s.url,
-          headers: s.headers || {},
-        },
+      enabledMcpServers[s.name] = {
+        type: 'sse',
+        url: s.url,
+        headers: s.headers || {},
       };
-    }
-    return {
-      [s.name]: {
+    } else {
+      enabledMcpServers[s.name] = {
         type: 'stdio',
         command: s.command,
         args: s.args || [],
         env: s.env || {},
-      },
-    };
-  });
+      };
+    }
+  }
 
   // Build system prompt: global memory + group system prompt
   const groupConfig = group.config || {};
@@ -105,7 +112,7 @@ async function handleMessageSend(
     }
   }
 
-  const mcpNames = enabledMcpServers.map((obj: any) => Object.keys(obj)[0] || 'unnamed');
+  const mcpNames = Object.keys(enabledMcpServers);
   console.log('[messages] startQuery', {
     userId,
     chatJid,
@@ -127,7 +134,7 @@ async function startQuery(
   chatJid: string,
   sessionId: string,
   prompt: string,
-  mcpServers: unknown[],
+  mcpServers: Record<string, unknown>,
   systemPrompt?: string
 ): Promise<void> {
   if (runningQueries.get(chatJid)) {
@@ -141,8 +148,8 @@ async function startQuery(
   let assistantText = '';
   let turnId = `turn-${Date.now()}`;
 
-  const mcpNames = mcpServers.map((obj: any) => Object.keys(obj)[0] || 'unnamed');
-  console.log('[messages] startQuery', { userId, chatJid, sessionId, promptLength: prompt.length, mcpCount: mcpServers.length, mcpNames });
+  const mcpNames = Object.keys(mcpServers);
+  console.log('[messages] startQuery', { userId, chatJid, sessionId, promptLength: prompt.length, mcpCount: mcpNames.length, mcpNames });
 
   try {
     const stream = querySession({
@@ -208,6 +215,8 @@ async function startQuery(
           senderName: 'Claude',
           turnId,
           timestamp: assistantTimestamp,
+          sourceKind: 'sdk_final',
+          finalizationReason: 'completed',
         },
       });
 
@@ -220,6 +229,11 @@ async function startQuery(
         content: assistantText.trim(),
         timestamp: assistantTimestamp,
         is_from_me: true,
+        turn_id: turnId,
+        session_id: sessionId,
+        sdk_message_uuid: null,
+        source_kind: 'sdk_final',
+        finalization_reason: 'completed',
       });
       console.log('[messages] broadcast complete');
     } else {

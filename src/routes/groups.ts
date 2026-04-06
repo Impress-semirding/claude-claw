@@ -333,16 +333,23 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
       allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       console.log('[groups/messages] totalMessages=', allMessages.length);
 
-      // 应用过滤
-      if (after) {
+      // 应用过滤（防御式处理：统一转为数字毫秒比较，避免 Invalid Date）
+      const afterTs = after ? new Date(after).getTime() : null;
+      const beforeTs = before ? new Date(before).getTime() : null;
+      if (afterTs && !Number.isNaN(afterTs)) {
         const beforeFilter = allMessages.length;
-        allMessages = allMessages.filter((m) => new Date(m.timestamp) > new Date(after));
-        console.log('[groups/messages] after filter: before=', beforeFilter, 'after=', allMessages.length);
+        const maxTs = beforeFilter > 0 ? Math.max(...allMessages.map((m) => new Date(m.timestamp).getTime())) : 0;
+        allMessages = allMessages.filter((m) => new Date(m.timestamp).getTime() > afterTs);
+        if (allMessages.length === 0 && beforeFilter > 0) {
+          console.warn('[groups/messages] after filter dropped all messages. after=', after, 'afterTs=', afterTs, 'latestMsgTs=', maxTs);
+        }
       }
-      if (before) {
-        allMessages = allMessages.filter((m) => new Date(m.timestamp) < new Date(before));
+      if (beforeTs && !Number.isNaN(beforeTs)) {
+        allMessages = allMessages.filter((m) => new Date(m.timestamp).getTime() < beforeTs);
       }
 
+      // 当 after 过滤后没有新消息时，返回空列表以符合增量轮询语义
+      // 这不是 bug——前端用最新消息时间戳作为 after，正常情况就是 0 条
       // 限制数量
       const hasMore = allMessages.length > limit;
       const messages = allMessages.slice(-limit);

@@ -298,14 +298,14 @@ export async function* querySession({
   workspace,
   sessionId,
   prompt,
-  mcpServers = [],
+  mcpServers = {} as Record<string, unknown>,
   systemPrompt,
 }: {
   userId: string;
   workspace: string;
   sessionId: string;
   prompt: string;
-  mcpServers?: unknown[];
+  mcpServers?: Record<string, unknown>;
   systemPrompt?: string;
 }): AsyncGenerator<IStreamEvent> {
   const key = sessionKey(userId, workspace, sessionId);
@@ -528,15 +528,18 @@ export function saveUserMessage(
   userId: string,
   sessionId: string,
   content: string,
-  attachments?: unknown[]
+  attachments?: unknown[],
+  messageId?: string,
+  metadata?: Record<string, unknown>
 ) {
   messageDb.create({
-    id: uuidv4(),
+    id: messageId || uuidv4(),
     sessionId,
     userId,
     role: 'user',
     content,
     attachments: attachments as { id: string; name: string; type: string; size: number; path: string }[] | undefined,
+    metadata,
   });
 }
 

@@ -118,19 +118,25 @@ export function safeBroadcast(
       wsClients.delete(client);
     }
   }
-  console.log('[ws] broadcast', msg.type, 'chatJid=', msg.chatJid, 'sent=', sent, 'skipped=', skipped, 'totalClients=', wsClients.size);
+  if (msg.type === 'new_message') {
+    console.log('[ws] broadcast new_message chatJid=', msg.chatJid, 'messageId=', (msg as any).message?.id, 'sender=', (msg as any).message?.sender, 'sent=', sent, 'skipped=', skipped, 'totalClients=', wsClients.size);
+  } else {
+    console.log('[ws] broadcast', msg.type, 'chatJid=', msg.chatJid, 'sent=', sent, 'skipped=', skipped, 'totalClients=', wsClients.size);
+  }
 }
 
 export function broadcastNewMessage(
   chatJid: string,
   msg: Record<string, unknown> & { is_from_me?: boolean },
-  _agentId?: string,
-  _source?: string
+  agentId?: string,
+  source?: string
 ): void {
   const out: WsMessageOut = {
     type: 'new_message',
     chatJid,
-    message: msg as any,
+    message: { ...msg, is_from_me: msg.is_from_me ?? false },
+    ...(agentId ? { agentId } : {}),
+    ...(source ? { source } : {}),
   };
   safeBroadcast(out, () => true);
 }

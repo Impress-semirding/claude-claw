@@ -14,7 +14,7 @@ declare module '@anthropic-ai/claude-agent-sdk' {
   export interface ClaudeQueryOptions {
     cwd: string;
     env: Record<string, string>;
-    mcpServers?: unknown[];
+    mcpServers?: Record<string, unknown>;
     model: string;
     maxTurns: number;
     maxBudgetUsd: number;
