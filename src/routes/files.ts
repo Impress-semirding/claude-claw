@@ -5,6 +5,7 @@ import { resolve, join, dirname, normalize, relative, sep } from 'path';
 import { appConfig } from '../config.js';
 import { readdir, stat, mkdir, readFile, writeFile, rm } from 'fs/promises';
 import { existsSync, realpathSync, createReadStream } from 'fs';
+import { getCachedFile, setCachedFile } from '../utils/file-cache.js';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const SYSTEM_PATHS = ['logs', 'CLAUDE.md', '.claude', 'conversations'];
@@ -118,6 +119,15 @@ export function isSystemPath(relativePath: string): boolean {
   const segments = normalized.split(sep).filter(Boolean);
   if (segments.length === 0) return false;
   if (segments.length === 1 && segments[0] === '.') return false;
+
+  // Whitelist user-editable paths under .claude/
+  if (segments[0] === '.claude') {
+    if (normalized === '.claude') return false;
+    if (normalized === '.claude/CLAUDE.md' || normalized.startsWith('.claude/memory/')) {
+      return false;
+    }
+  }
+
   const firstSegment = segments[0];
   return SYSTEM_PATHS.some((sysPath) => firstSegment === sysPath || normalized === sysPath);
 }
@@ -325,7 +335,11 @@ export default async function filesRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: 'File too large to read (max 10MB)' });
       }
 
-      const content = await readFile(targetPath, 'utf-8');
+      let content = getCachedFile(targetPath);
+      if (content === null) {
+        content = await readFile(targetPath, 'utf-8');
+        setCachedFile(targetPath, content);
+      }
       return reply.send({ content, size: stats.size });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Failed to read file';

@@ -3,7 +3,8 @@ import { authMiddleware } from './auth.js';
 import { groupDb, messageDb, mcpServerDb, agentDb } from '../db.js';
 import { randomUUID } from 'crypto';
 import { resolve } from 'path';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync } from 'fs';
+import { readFileCached } from '../utils/file-cache.js';
 import { appConfig } from '../config.js';
 import {
   querySession,
@@ -101,11 +102,29 @@ async function handleMessageSend(
   const groupConfig = group.config || {};
   let systemPrompt = groupConfig.systemPrompt || '';
 
+  // Read group-level CLAUDE.md (project memory)
+  if (group?.folder) {
+    const groupClaudeDir = resolve(appConfig.claude.baseDir, group.folder, '.claude');
+    const groupClaudePath = resolve(groupClaudeDir, 'CLAUDE.md');
+    const groupRootPath = resolve(appConfig.claude.baseDir, group.folder, 'CLAUDE.md');
+    let groupMemory = '';
+    if (existsSync(groupClaudePath)) {
+      groupMemory = readFileCached(groupClaudePath)?.trim() ?? '';
+    } else if (existsSync(groupRootPath)) {
+      groupMemory = readFileCached(groupRootPath)?.trim() ?? '';
+    }
+    if (groupMemory) {
+      systemPrompt = systemPrompt
+        ? `${groupMemory}\n\n${systemPrompt}`
+        : groupMemory;
+    }
+  }
+
   // Read user global memory (data/groups/user-global/{userId}/CLAUDE.md)
   const globalMemoryDir = resolve(appConfig.dataDir, 'groups', 'user-global', userId);
   const globalMemoryPath = resolve(globalMemoryDir, 'CLAUDE.md');
   if (existsSync(globalMemoryPath)) {
-    const memoryContent = readFileSync(globalMemoryPath, 'utf-8');
+    const memoryContent = readFileCached(globalMemoryPath) ?? '';
     if (memoryContent.trim()) {
       systemPrompt = systemPrompt
         ? `${memoryContent.trim()}\n\n${systemPrompt}`

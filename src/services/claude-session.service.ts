@@ -7,6 +7,13 @@ import type { ISessionInfo, IStreamEvent, StreamEvent } from '../types.js';
 import { getIsolator } from './workspace-isolator/factory.js';
 import * as processRegistry from './process-registry.js';
 import { ClawStreamProcessor } from './stream-processor.js';
+import { readFileCached, setCachedFile } from '../utils/file-cache.js';
+import {
+  categorizeError,
+  calculateRetryDelay,
+  shouldRetry,
+  extractRetryAfterMs,
+} from './retry.js';
 
 interface ProviderRecord {
   id: string;
@@ -23,8 +30,18 @@ interface ProviderSecretRecord {
 function readProviders(): ProviderRecord[] {
   const p = resolve(appConfig.dataDir, 'config', 'claude-providers.json');
   if (!existsSync(p)) return [];
+  const cached = readFileCached(p, 5000);
+  if (cached !== null) {
+    try {
+      return JSON.parse(cached) as ProviderRecord[];
+    } catch {
+      return [];
+    }
+  }
   try {
-    return JSON.parse(readFileSync(p, 'utf-8')) as ProviderRecord[];
+    const content = readFileSync(p, 'utf-8');
+    setCachedFile(p, content);
+    return JSON.parse(content) as ProviderRecord[];
   } catch {
     return [];
   }
@@ -33,8 +50,18 @@ function readProviders(): ProviderRecord[] {
 function readSecrets(): Record<string, ProviderSecretRecord> {
   const p = resolve(appConfig.dataDir, 'config', 'claude-secrets.json');
   if (!existsSync(p)) return {};
+  const cached = readFileCached(p, 5000);
+  if (cached !== null) {
+    try {
+      return JSON.parse(cached) as Record<string, ProviderSecretRecord>;
+    } catch {
+      return {};
+    }
+  }
   try {
-    return JSON.parse(readFileSync(p, 'utf-8')) as Record<string, ProviderSecretRecord>;
+    const content = readFileSync(p, 'utf-8');
+    setCachedFile(p, content);
+    return JSON.parse(content) as Record<string, ProviderSecretRecord>;
   } catch {
     return {};
   }
@@ -453,12 +480,57 @@ export async function* querySession({
   // Add system prompt if provided
   const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
 
-  try {
-    // Load and call Claude SDK
-    const claudeQuery = await loadClaudeQuery();
-    console.log('[claude-session] calling claudeQuery with prompt length', fullPrompt.length);
-    const stream = claudeQuery({ prompt: fullPrompt, options });
+  // Load Claude SDK (outside retry — module loading is not retriable)
+  const claudeQuery = await loadClaudeQuery();
 
+  // Retry loop for claudeQuery invocation (stage 1: before stream consumption)
+  const MAX_RETRIES = 3;
+  let lastError: Error | null = null;
+  let stream: ReturnType<typeof claudeQuery> | null = null;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      console.log('[claude-session] calling claudeQuery with prompt length', fullPrompt.length, 'attempt', attempt);
+      stream = claudeQuery({ prompt: fullPrompt, options });
+      break;
+    } catch (err) {
+      const category = categorizeError(err);
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.error('[claude-session] claudeQuery attempt', attempt, 'failed:', category, lastError.message);
+
+      if (!shouldRetry(category, attempt, MAX_RETRIES)) {
+        break;
+      }
+
+      const retryAfterMs = extractRetryAfterMs(err);
+      const delayMs = calculateRetryDelay(attempt, category, retryAfterMs);
+      if (onStreamEvent && attempt < MAX_RETRIES) {
+        onStreamEvent({
+          eventType: 'status',
+          statusText: `API 重试中 (${attempt}/${MAX_RETRIES})`,
+          turnId: turnId || `turn-${Date.now()}`,
+        });
+      }
+
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+
+  if (!stream) {
+    session.status = 'error';
+    sessionDb.update(sessionId, { status: 'error' });
+    const errorMsg = lastError?.message || 'Claude query failed';
+    console.error('[claude-session] querySession exhausted retries', errorMsg);
+    yield {
+      type: 'error',
+      error: errorMsg,
+      timestamp: Date.now(),
+    };
+    session.abortController = undefined;
+    return;
+  }
+
+  try {
     const processor = onStreamEvent ? new ClawStreamProcessor(onStreamEvent, turnId || `turn-${Date.now()}`) : null;
 
     for await (const rawMessage of stream) {
