@@ -3,7 +3,7 @@ import { resolve, join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { appConfig } from '../config.js';
 import { sessionDb, messageDb, groupDb } from '../db.js';
-import type { ISessionInfo, IStreamEvent, StreamEvent } from '../types.js';
+import type { ISessionInfo, IStreamEvent, StreamEvent, IGroupConfig } from '../types.js';
 import { getIsolator } from './workspace-isolator/factory.js';
 import * as processRegistry from './process-registry.js';
 import { ClawStreamProcessor } from './stream-processor.js';
@@ -14,6 +14,7 @@ import {
   shouldRetry,
   extractRetryAfterMs,
 } from './retry.js';
+import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 
 interface ProviderRecord {
   id: string;
@@ -73,6 +74,51 @@ function getActiveProvider(): { provider?: ProviderRecord; secret?: ProviderSecr
   if (!active) return {};
   const secrets = readSecrets();
   return { provider: active, secret: secrets[active.id] };
+}
+
+const COMPACT_MESSAGE_THRESHOLD = appConfig.claude.compactThreshold || 50;
+
+function shouldCompactSession(sessionId: string): boolean {
+  const count = messageDb.countBySession(sessionId);
+  return count > COMPACT_MESSAGE_THRESHOLD;
+}
+
+function buildCompactSummary(sessionId: string): string {
+  const messages = messageDb.findBySession(sessionId, 20);
+  const lines = messages.map((m) => {
+    const role = m.role === 'assistant' ? 'Claude' : 'User';
+    const text = m.content.slice(0, 500).replace(/\n/g, ' ');
+    return `${role}: ${text}`;
+  });
+  return `Here is a summary of the recent conversation:\n\n${lines.join('\n')}`;
+}
+
+function buildCanUseTool(
+  groupConfig?: IGroupConfig
+): CanUseTool | undefined {
+  const allowed = groupConfig?.allowedTools;
+  const disallowed = groupConfig?.disallowedTools;
+  if ((!allowed || allowed.length === 0) && (!disallowed || disallowed.length === 0)) {
+    return undefined;
+  }
+
+  return async (
+    toolName: string,
+    _input: Record<string, unknown>,
+    _options: { signal: AbortSignal; toolUseID: string; agentID?: string }
+  ): Promise<PermissionResult> => {
+    console.log('[canUseTool] checking', toolName, 'allowed=', allowed, 'disallowed=', disallowed);
+    if (disallowed && disallowed.length > 0 && disallowed.includes(toolName)) {
+      console.log('[canUseTool] DENY', toolName);
+      return { behavior: 'deny', message: `Tool ${toolName} is disallowed by group policy` };
+    }
+    if (allowed && allowed.length > 0 && !allowed.includes(toolName)) {
+      console.log('[canUseTool] DENY', toolName);
+      return { behavior: 'deny', message: `Tool ${toolName} is not in the allowed tools list` };
+    }
+    console.log('[canUseTool] ALLOW', toolName);
+    return { behavior: 'allow', updatedInput: {} };
+  };
 }
 
 // Session registry for runtime tracking
@@ -377,9 +423,19 @@ export async function* querySession({
   // Migrate old sessions: workDir should be the shared group folder, not an isolated path
   const group = groupDb.findById(workspace);
   const expectedWorkDir = group?.folder || workspace;
+  const groupConfig = group?.config;
+
   if (session.workDir !== expectedWorkDir) {
     session.workDir = expectedWorkDir;
     sessionDb.update(sessionId, { workDir: expectedWorkDir });
+  }
+
+  // Context compaction: if session has too many messages, reset SDK session
+  const isCompacting = shouldCompactSession(sessionId);
+  if (isCompacting) {
+    console.log('[claude-session] compacting session', sessionId, 'message count exceeded threshold');
+    session.sdkSessionId = undefined;
+    sessionDb.update(sessionId, { sdk_session_id: undefined });
   }
 
   // Build absolute paths
@@ -443,9 +499,12 @@ export async function* querySession({
     model,
     maxTurns: appConfig.claude.maxTurns || 100,
     maxBudgetUsd: appConfig.claude.maxBudgetUsd || 10,
-    permissionMode: 'bypassPermissions',
-    allowDangerouslySkipPermissions: true,
-    resume: session.sdkSessionId,
+    permissionMode:
+      groupConfig?.allowedTools?.length || groupConfig?.disallowedTools?.length
+        ? 'default'
+        : 'bypassPermissions',
+    allowDangerouslySkipPermissions:
+      !groupConfig?.allowedTools?.length && !groupConfig?.disallowedTools?.length,
     spawnClaudeCodeProcess: (spawnOpts: any) => {
       console.log('[claude-session] spawnClaudeCodeProcess', spawnOpts.command, spawnOpts.args?.slice(0, 5));
       const proc = isolator.spawn({
@@ -468,6 +527,23 @@ export async function* querySession({
     },
   };
 
+  // Resume SDK session unless compacting
+  if (!isCompacting && session.sdkSessionId) {
+    options.resume = session.sdkSessionId;
+  }
+
+  // Tool loop controls
+  const canUseTool = buildCanUseTool(groupConfig);
+  if (canUseTool) {
+    options.canUseTool = canUseTool;
+  }
+  if (groupConfig?.allowedTools && groupConfig.allowedTools.length > 0) {
+    options.allowedTools = groupConfig.allowedTools;
+  }
+  if (groupConfig?.disallowedTools && groupConfig.disallowedTools.length > 0) {
+    options.disallowedTools = groupConfig.disallowedTools;
+  }
+
   // Only pass sandbox option when explicitly enabled;
   // passing sandbox: { enabled: false } causes the SDK to hang on macOS
   if (appConfig.claude.sandboxEnabled) {
@@ -477,8 +553,13 @@ export async function* querySession({
     };
   }
 
-  // Add system prompt if provided
-  const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
+  // Build prompt: prepend compact summary if compacting, then system prompt
+  let effectivePrompt = prompt;
+  if (isCompacting) {
+    const compactSummary = buildCompactSummary(sessionId);
+    effectivePrompt = `${compactSummary}\n\n${effectivePrompt}`;
+  }
+  const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${effectivePrompt}` : effectivePrompt;
 
   // Load Claude SDK (outside retry — module loading is not retriable)
   const claudeQuery = await loadClaudeQuery();

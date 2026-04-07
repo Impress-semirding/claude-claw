@@ -123,7 +123,7 @@ export function isSystemPath(relativePath: string): boolean {
   // Whitelist user-editable paths under .claude/
   if (segments[0] === '.claude') {
     if (normalized === '.claude') return false;
-    if (normalized === '.claude/CLAUDE.md' || normalized.startsWith('.claude/memory/')) {
+    if (normalized === '.claude/CLAUDE.md' || normalized.startsWith('.claude/memory/') || normalized.startsWith('.claude/rules/')) {
       return false;
     }
   }

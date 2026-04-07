@@ -903,6 +903,11 @@ export const messageDb = {
   deleteBySession(sessionId: string) {
     db.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId);
   },
+
+  countBySession(sessionId: string): number {
+    const row = db.prepare('SELECT COUNT(*) as count FROM messages WHERE session_id = ?').get(sessionId) as { count: number } | undefined;
+    return row ? Number(row.count) : 0;
+  },
 };
 
 // MCP server operations

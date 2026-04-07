@@ -3,8 +3,6 @@ import { authMiddleware } from './auth.js';
 import { groupDb, messageDb, mcpServerDb, agentDb } from '../db.js';
 import { randomUUID } from 'crypto';
 import { resolve } from 'path';
-import { existsSync } from 'fs';
-import { readFileCached } from '../utils/file-cache.js';
 import { appConfig } from '../config.js';
 import {
   querySession,
@@ -19,6 +17,7 @@ import {
 } from '../services/ws.service.js';
 import type { WsClientInfo } from '../services/ws.service.js';
 import type { IStreamEvent } from '../types.js';
+import { getMemoryFiles, getClaudeMds } from '../services/memory.js';
 
 // Track running queries per group to broadcast runner_state
 const runningQueries = new Map<string, boolean>();
@@ -98,38 +97,21 @@ async function handleMessageSend(
     }
   }
 
-  // Build system prompt: global memory + group system prompt
+  // Build system prompt: hierarchical memory + group system prompt + agent prompt
   const groupConfig = group.config || {};
   let systemPrompt = groupConfig.systemPrompt || '';
 
-  // Read group-level CLAUDE.md (project memory)
-  if (group?.folder) {
-    const groupClaudeDir = resolve(appConfig.claude.baseDir, group.folder, '.claude');
-    const groupClaudePath = resolve(groupClaudeDir, 'CLAUDE.md');
-    const groupRootPath = resolve(appConfig.claude.baseDir, group.folder, 'CLAUDE.md');
-    let groupMemory = '';
-    if (existsSync(groupClaudePath)) {
-      groupMemory = readFileCached(groupClaudePath)?.trim() ?? '';
-    } else if (existsSync(groupRootPath)) {
-      groupMemory = readFileCached(groupRootPath)?.trim() ?? '';
-    }
-    if (groupMemory) {
-      systemPrompt = systemPrompt
-        ? `${groupMemory}\n\n${systemPrompt}`
-        : groupMemory;
-    }
-  }
+  const workspaceDir = resolve(appConfig.claude.baseDir, group.folder || '');
+  const userGlobalPath = resolve(appConfig.dataDir, 'groups', 'user-global', userId, 'CLAUDE.md');
 
-  // Read user global memory (data/groups/user-global/{userId}/CLAUDE.md)
-  const globalMemoryDir = resolve(appConfig.dataDir, 'groups', 'user-global', userId);
-  const globalMemoryPath = resolve(globalMemoryDir, 'CLAUDE.md');
-  if (existsSync(globalMemoryPath)) {
-    const memoryContent = readFileCached(globalMemoryPath) ?? '';
-    if (memoryContent.trim()) {
-      systemPrompt = systemPrompt
-        ? `${memoryContent.trim()}\n\n${systemPrompt}`
-        : memoryContent.trim();
-    }
+  // Load hierarchical memory files (project, local, user global, includes, rules)
+  const memoryFiles = await getMemoryFiles(workspaceDir, { userGlobalPath });
+  const memoryPrompt = getClaudeMds(memoryFiles);
+
+  if (memoryPrompt) {
+    systemPrompt = systemPrompt
+      ? `${memoryPrompt}\n\n${systemPrompt}`
+      : memoryPrompt;
   }
 
   // Add agent-specific prompt for conversation agents

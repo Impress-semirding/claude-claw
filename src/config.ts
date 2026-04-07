@@ -36,6 +36,7 @@ export const appConfig = {
       : undefined,
     maxSessionsPerUser: parseInt(process.env.MAX_SESSIONS_PER_USER || '10', 10),
     maxIdleMs: parseInt(process.env.MAX_IDLE_MS || '30') * 60 * 1000, // 30 minutes
+    compactThreshold: parseInt(process.env.CLAUDE_COMPACT_THRESHOLD || '50', 10),
   },
 
   // Security
