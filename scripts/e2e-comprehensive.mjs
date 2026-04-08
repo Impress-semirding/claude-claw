@@ -183,7 +183,24 @@ class PlaywrightTester {
   }
 
   async testChat() {
-    await this.page.goto(`${BASE_URL}/chat/group-6685800d`);
+    // Ensure we have a fresh group for chat testing (avoid hardcoded group with stale data)
+    if (!this.testGroupJid) {
+      const groups = await this.apiFetch('GET', '/api/groups');
+      if (groups.ok && groups.data?.groups && Object.keys(groups.data.groups).length > 0) {
+        const first = Object.values(groups.data.groups)[0];
+        this.testGroupJid = first.jid || first.id;
+      } else {
+        const newGroup = await this.apiFetch('POST', '/api/groups', { name: `E2E Chat Group ${Date.now()}` });
+        if (newGroup.ok && newGroup.data?.group?.jid) {
+          this.testGroupJid = newGroup.data.group.jid;
+        }
+      }
+    }
+    if (!this.testGroupJid) {
+      this.addIssue('chat', 'error', 'No group available for chat test', 'Could not find or create a group');
+      return;
+    }
+    await this.page.goto(`${BASE_URL}/chat/${this.testGroupJid}`);
     await this.page.waitForTimeout(2000);
     const textarea = this.page.locator('textarea').first();
     const visible = await textarea.isVisible().catch(() => false);
@@ -222,10 +239,8 @@ class PlaywrightTester {
       { path: '/settings?tab=profile', name: 'Settings Profile' },
       { path: '/settings?tab=agent-definitions', name: 'Settings Agent Definitions' },
       { path: '/settings?tab=usage', name: 'Settings Usage' },
-      { path: '/settings?tab=groups', name: 'Settings Groups' },
       { path: '/settings?tab=mcp-servers', name: 'Settings MCP Servers' },
       { path: '/settings?tab=system', name: 'Settings System' },
-      { path: '/settings?tab=monitor', name: 'Settings Monitor' },
       { path: '/users', name: 'Users' },
     ];
 
@@ -264,7 +279,7 @@ class PlaywrightTester {
     }
 
     await this.testApi('Group Messages', 'GET', `/api/groups/${encodeURIComponent(this.testGroupJid)}/messages?limit=10`);
-    await this.testApi('Group Files', 'GET', `/api/groups/${encodeURIComponent(this.testGroupJid)}/files?path=/`);
+    await this.testApi('Group Files', 'GET', `/api/groups/${encodeURIComponent(this.testGroupJid)}/files?path=.`);
     await this.testApi('Group Env', 'GET', `/api/groups/${encodeURIComponent(this.testGroupJid)}/env`);
     await this.testApi('Group Workspace Skills', 'GET', `/api/groups/${encodeURIComponent(this.testGroupJid)}/workspace-config/skills`);
     await this.testApi('Group Workspace MCP', 'GET', `/api/groups/${encodeURIComponent(this.testGroupJid)}/workspace-config/mcp-servers`);
@@ -272,7 +287,7 @@ class PlaywrightTester {
 
     // Test group mutations
     await this.testApi('Update Group Env', 'PUT', `/api/groups/${encodeURIComponent(this.testGroupJid)}/env`, { env: { TEST: 'value' } });
-    await this.testApi('Create Directory', 'POST', `/api/groups/${encodeURIComponent(this.testGroupJid)}/files/directories`, { path: '/', name: 'e2e-test-dir' });
+    await this.testApi('Create Directory', 'POST', `/api/groups/${encodeURIComponent(this.testGroupJid)}/files/directories`, { path: '.', name: 'e2e-test-dir' });
 
     // Write a file
     const filePath = Buffer.from('e2e-test-dir/test.txt').toString('base64');

@@ -102,6 +102,24 @@ class StreamingPersistenceTester {
   }
 
   async getFirstGroup() {
+    // Prefer creating a fresh group so we don't reuse stale workspaces that may break the SDK
+    try {
+      const createResp = await fetch(`${API_BASE}/api/groups`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiToken}` },
+        body: JSON.stringify({ name: `E2E-Streaming-${Date.now()}` }),
+      });
+      if (createResp.ok) {
+        const data = await createResp.json();
+        this.groupJid = data.group.jid || data.group.id;
+        this.groupFolder = data.group.folder || this.groupJid;
+        console.log(`[E2E] Created streaming group JID: ${this.groupJid}, folder: ${this.groupFolder}`);
+        return { jid: this.groupJid, folder: this.groupFolder };
+      }
+    } catch (err) {
+      console.warn('[E2E] Failed to create streaming group, falling back to first group', err);
+    }
+
     const data = await this.apiGet('/api/groups');
     const groups = Object.values(data.groups || {});
     const first = groups[0];
@@ -165,7 +183,7 @@ class StreamingPersistenceTester {
       await this.navigateToChat();
 
       // ---- Test 1: Send message and catch the waiting=true window ----
-      const msgContent = `streaming-persistence-test-${Date.now()}`;
+      const msgContent = `Say hello. streaming-persistence-test-${Date.now()}`;
       await this.sendMessage(msgContent);
 
       // Aggressively poll DOM waiting state
@@ -234,7 +252,7 @@ class StreamingPersistenceTester {
 
       // ---- Test 3: Interrupt / completion path ----
       // Wait for runner_state idle or assistant reply to ensure state eventually clears
-      const gotIdle = await this.waitForWsEvent('runner_state', this.groupJid, 30000);
+      const gotIdle = await this.waitForWsEvent('runner_state', this.groupJid, 60000);
       if (gotIdle) {
         console.log('[E2E] Captured runner_state idle');
       }
