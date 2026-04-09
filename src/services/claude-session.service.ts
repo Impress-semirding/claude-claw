@@ -1,5 +1,7 @@
-import { mkdirSync, rmSync, existsSync, copyFileSync, readdirSync, readFileSync, cpSync, watch, unlinkSync } from 'fs';
+import { mkdirSync, rmSync, existsSync, copyFileSync, readdirSync, readFileSync, cpSync } from 'fs';
 import { resolve, join } from 'path';
+import { spawn } from 'child_process';
+import { createInterface } from 'readline';
 import { v4 as uuidv4 } from 'uuid';
 import { appConfig } from '../config.js';
 import { sessionDb, messageDb, groupDb } from '../db.js';
@@ -14,6 +16,7 @@ import {
   shouldRetry,
   extractRetryAfterMs,
 } from './retry.js';
+import { agentPool } from './agent-pool.js';
 import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 
 interface ProviderRecord {
@@ -125,16 +128,6 @@ function buildCanUseTool(
 
 // Session registry for runtime tracking
 const sessions = new Map<string, ISessionInfo & { abortController?: AbortController }>();
-
-// Lazy load Claude SDK
-let claudeQueryModule: typeof import('@anthropic-ai/claude-agent-sdk') | null = null;
-
-async function loadClaudeQuery() {
-  if (!claudeQueryModule) {
-    claudeQueryModule = await import('@anthropic-ai/claude-agent-sdk');
-  }
-  return claudeQueryModule.query;
-}
 
 // Generate session key
 function sessionKey(userId: string, workspace: string, sessionId: string): string {
@@ -342,6 +335,9 @@ export function abortQuery(userId: string, workspace: string, sessionId: string)
   }
 
   session.abortController.abort();
+  // In child-process architecture, aborting the signal alone may not unblock
+  // the stdout reader immediately. Send SIGTERM to the runner for instant cancel.
+  agentPool.kill(sessionId, 'SIGTERM');
   session.status = 'idle';
   sessionDb.update(sessionId, { status: 'idle' });
 
@@ -675,23 +671,258 @@ process.stdin.on('end', () => {
     fullPrompt = `${compactSummary}\n\n${fullPrompt}`;
   }
 
-  // Load Claude SDK (outside retry — module loading is not retriable)
-  const claudeQuery = await loadClaudeQuery();
+  // Build runner path with runtime detection (dist first, then dev fallback)
+  const distRunnerPath = resolve(process.cwd(), 'dist/agent-runner/index.js');
+  const devRunnerPath = resolve(process.cwd(), 'src/agent-runner/index.ts');
+  const runnerPath = existsSync(distRunnerPath) ? distRunnerPath : devRunnerPath;
 
-  // Retry loop for claudeQuery invocation (stage 1: before stream consumption)
+  // Ensure IPC directory exists for mid-query injection (monitored by runner)
+  const ipcInputDir = resolve(appConfig.dataDir, 'ipc', sessionId, 'input');
+  mkdirSync(ipcInputDir, { recursive: true });
+
+  // Serialize options: strip non-serializable functions that will be rebuilt in runner
+  const serializableOptions: any = { ...options };
+  delete serializableOptions.canUseTool;
+  delete serializableOptions.spawnClaudeCodeProcess;
+
+  // Retry loop for spawning agent runner and consuming stream (covers both stage 1 & stage 2)
   const MAX_RETRIES = 3;
+  const QUERY_HARD_TIMEOUT_MS = 10 * 60 * 1000;
   let lastError: Error | null = null;
-  let stream: ReturnType<typeof claudeQuery> | null = null;
+  let proc: ReturnType<typeof spawn> | null = null;
+  let streamConsumed = false;
+  let hadAssistantOutput = false;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log('[claude-session] calling claudeQuery with prompt length', fullPrompt.length, 'attempt', attempt);
-      stream = claudeQuery({ prompt: fullPrompt, options });
-      break;
+      console.log(`[claude-session:${sessionId}] acquiring pool slot attempt`, attempt);
+      await agentPool.acquire(sessionId);
+
+      const isTs = runnerPath.endsWith('.ts');
+      const command = isTs ? resolve(process.cwd(), 'node_modules/.bin/tsx') : 'node';
+      console.log(`[claude-session:${sessionId}] spawning agent runner`, command, runnerPath, 'workspace', workspace);
+
+      const runnerEnv = {
+        ...process.env,
+        ...env,
+        CLAUDE_CONFIG_DIR: absConfigDir,
+        NODE_OPTIONS: '--max-old-space-size=2048',
+      };
+      proc = spawn(command, [runnerPath], {
+        cwd: process.cwd(),
+        env: runnerEnv,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      agentPool.bind(sessionId, proc);
+      const processId = `${userId}-${sessionId}-${Date.now()}`;
+      processRegistry.registerProcess(processId, proc, workspace, userId);
+
+      // Re-serialize options on every retry so previous attempt mutations don't leak
+      const attemptOptions: any = { ...serializableOptions };
+      if (!isCompacting && session.sdkSessionId) {
+        attemptOptions.resume = session.sdkSessionId;
+        if (session.lastAssistantUuid) {
+          attemptOptions.resumeSessionAt = session.lastAssistantUuid;
+        }
+      }
+
+      const runnerInput = JSON.stringify({
+        prompt: fullPrompt,
+        options: attemptOptions,
+        ipcDir: ipcInputDir,
+        allowedTools: agentOptions?.allowedTools ?? groupConfig?.allowedTools,
+        disallowedTools: agentOptions?.disallowedTools ?? groupConfig?.disallowedTools,
+      });
+
+      // Safe stdin write (#8)
+      await new Promise<void>((resolve, reject) => {
+        if (!proc!.stdin) {
+          reject(new Error('Agent runner stdin is not available'));
+          return;
+        }
+        proc!.stdin.on('error', (err) => {
+          console.error(`[claude-session:${sessionId}] runner stdin error:`, err.message);
+        });
+        proc!.stdin.write(runnerInput, (err) => {
+          if (err) {
+            reject(err);
+          } else {
+            proc!.stdin!.end();
+            resolve();
+          }
+        });
+      });
+
+      // Quick sanity check: if process exits within 500ms, treat as spawn failure
+      await new Promise<void>((resolve, reject) => {
+        const onExitEarly = (code: number | null) => {
+          reject(new Error(`Agent runner exited immediately with code ${code}`));
+        };
+        proc!.once('exit', onExitEarly);
+        setTimeout(() => {
+          proc!.off('exit', onExitEarly);
+          resolve();
+        }, 500);
+      });
+
+      // --- Stream consumption ---
+      const processor = onStreamEvent ? new ClawStreamProcessor(onStreamEvent, turnId || `turn-${Date.now()}`) : null;
+      if (!proc.stdout) {
+        throw new Error('Agent runner stdout is not available');
+      }
+      const rl = createInterface({ input: proc.stdout });
+      let streamError: string | null = null;
+
+      // Hard timeout (#2)
+      const hardTimeout = setTimeout(() => {
+        console.error(`[claude-session:${sessionId}] hard timeout reached, killing runner`);
+        try { proc!.kill('SIGKILL'); } catch {}
+      }, QUERY_HARD_TIMEOUT_MS);
+
+      proc.stderr?.on('data', (data: Buffer) => {
+        const text = data.toString('utf-8').trim();
+        if (text) {
+          console.error(`[claude-session:${sessionId}] runner stderr:`, text.slice(0, 500));
+        }
+      });
+
+      for await (const line of rl) {
+        if (abortController.signal.aborted) {
+          yield { type: 'error', error: 'Query aborted by user', timestamp: Date.now() };
+          break;
+        }
+
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === '__CLAW_END__') {
+          if (trimmed === '__CLAW_END__') break;
+          continue;
+        }
+
+        let message: any;
+        try {
+          message = JSON.parse(trimmed);
+        } catch (e) {
+          console.error(`[claude-session:${sessionId}] Failed to parse runner output line:`, trimmed.slice(0, 200));
+          continue;
+        }
+
+        // Handle runner-internal errors
+        if (message.__runner_error__) {
+          streamError = message.error || 'Agent runner error';
+          yield { type: 'error', error: streamError || 'Agent runner error', timestamp: Date.now() };
+          continue;
+        }
+
+        // Handle result messages (e.g., API errors from SDK)
+        if (message.type === 'result') {
+          if (message.is_error) {
+            yield { type: 'error', error: message.result || 'Claude Code error', timestamp: Date.now() };
+          }
+          continue;
+        }
+
+        // Extract SDK session ID from init message
+        if (message.type === 'system' && message.subtype === 'init') {
+          session.sdkSessionId = message.session_id;
+          sessionDb.update(sessionId, { sdk_session_id: message.session_id });
+        }
+
+        // Track lastAssistantUuid for fine-grained resume on next query
+        if (message.type === 'result' && message.session_id) {
+          if (message.session_id !== session.sdkSessionId) {
+            session.sdkSessionId = message.session_id;
+            sessionDb.update(sessionId, { sdk_session_id: message.session_id });
+          }
+          if (message.last_assistant_uuid) {
+            session.lastAssistantUuid = message.last_assistant_uuid;
+            sessionDb.update(sessionId, { last_assistant_uuid: message.last_assistant_uuid });
+          }
+        }
+
+        if (processor) {
+          processor.processMessage(message);
+          if (message.type === 'assistant') {
+            hadAssistantOutput = true;
+          }
+          if (message.type === 'error') {
+            yield { type: 'error', error: message.error || 'Unknown error', timestamp: Date.now() };
+          }
+          continue;
+        }
+
+        // Backwards-compatible path when no onStreamEvent provided
+        let content: string | undefined = message.content;
+        if (message.type === 'assistant' && !content && message.message) {
+          const msgContent = message.message.content;
+          if (Array.isArray(msgContent)) {
+            content = msgContent
+              .filter((c: any) => c.type === 'text')
+              .map((c: any) => c.text)
+              .join('');
+          } else if (typeof msgContent === 'string') {
+            content = msgContent;
+          }
+        }
+        if (message.type === 'assistant') {
+          hadAssistantOutput = true;
+        }
+
+        const event: IStreamEvent = {
+          type: message.type as IStreamEvent['type'],
+          subtype: message.subtype,
+          content,
+          tool_name: message.tool_name || message.message?.tool_name,
+          tool_input: message.tool_input || message.message?.tool_input,
+          tool_output: message.tool_output,
+          error: message.error,
+          session_id: message.session_id || session.sdkSessionId,
+          timestamp: Date.now(),
+        };
+        yield event;
+      }
+
+      clearTimeout(hardTimeout);
+
+      if (processor) {
+        processor.cleanup();
+        const fullText = processor.getFullText();
+        if (fullText) {
+          yield { type: 'assistant', content: fullText, timestamp: Date.now() };
+          hadAssistantOutput = true;
+        }
+      }
+
+      if (streamError && !proc.killed) {
+        throw new Error(streamError);
+      }
+
+      yield { type: 'complete', timestamp: Date.now(), hadCompaction: isCompacting, isMemoryFlush } as IStreamEvent & { hadCompaction?: boolean; isMemoryFlush?: boolean };
+      session.status = 'idle';
+      sessionDb.update(sessionId, { status: 'idle' });
+      streamConsumed = true;
+      break; // Success
     } catch (err) {
       const category = categorizeError(err);
       lastError = err instanceof Error ? err : new Error(String(err));
-      console.error('[claude-session] claudeQuery attempt', attempt, 'failed:', category, lastError.message);
+      console.error(`[claude-session:${sessionId}] attempt ${attempt} failed:`, category, lastError.message);
+
+      if (proc) {
+        try { proc.kill('SIGKILL'); } catch {}
+        agentPool.release(sessionId);
+        proc = null;
+      }
+
+      if (abortController.signal.aborted) {
+        break;
+      }
+
+      // Conservative retry policy for stream-stage errors (#5):
+      // Only retry if we haven't produced any assistant output yet.
+      if (hadAssistantOutput) {
+        console.log(`[claude-session:${sessionId}] assistant output already produced, skipping retry`);
+        break;
+      }
 
       if (!shouldRetry(category, attempt, MAX_RETRIES)) {
         break;
@@ -700,216 +931,27 @@ process.stdin.on('end', () => {
       const retryAfterMs = extractRetryAfterMs(err);
       const delayMs = calculateRetryDelay(attempt, category, retryAfterMs);
       if (onStreamEvent && attempt < MAX_RETRIES) {
-        onStreamEvent({
-          eventType: 'status',
-          statusText: `API 重试中 (${attempt}/${MAX_RETRIES})`,
-          turnId: turnId || `turn-${Date.now()}`,
-        });
+        onStreamEvent({ eventType: 'status', statusText: `API 重试中 (${attempt}/${MAX_RETRIES})`, turnId: turnId || `turn-${Date.now()}` });
       }
-
       await new Promise((r) => setTimeout(r, delayMs));
     }
   }
 
-  if (!stream) {
+  if (!streamConsumed) {
     session.status = 'error';
     sessionDb.update(sessionId, { status: 'error' });
     const errorMsg = lastError?.message || 'Claude query failed';
-    console.error('[claude-session] querySession exhausted retries', errorMsg);
-    yield {
-      type: 'error',
-      error: errorMsg,
-      timestamp: Date.now(),
-    };
-    session.abortController = undefined;
-    return;
+    console.error(`[claude-session:${sessionId}] querySession exhausted retries`, errorMsg);
+    yield { type: 'error', error: errorMsg, timestamp: Date.now() };
   }
 
-  // IPC mid-query injection setup — declared outside try so finally can clean up
-  const ipcInputDir = resolve(appConfig.dataDir, 'ipc', sessionId, 'input');
-  mkdirSync(ipcInputDir, { recursive: true });
-
-  let ipcWatcher: ReturnType<typeof watch> | null = null;
-  let ipcFallback: ReturnType<typeof setInterval> | null = null;
-  let ipcWatcherClosed = false;
-
-  function closeIpcWatcher() {
-    ipcWatcherClosed = true;
-    try { ipcWatcher?.close(); } catch { }
-    if (ipcFallback) { clearInterval(ipcFallback); ipcFallback = null; }
+  // Clean up abort controller, IPC directory and release pool slot
+  session.abortController = undefined;
+  try { rmSync(ipcInputDir, { recursive: true, force: true }); } catch {}
+  if (proc && !proc.killed) {
+    try { proc.kill('SIGTERM'); } catch {}
   }
-
-  try {
-    const processor = onStreamEvent ? new ClawStreamProcessor(onStreamEvent, turnId || `turn-${Date.now()}`) : null;
-
-    // IPC mid-query injection: watch per-session input directory for new messages.
-    // Any JSON file dropped into this dir while query is running will be injected
-    // into the active Claude session via stream.streamInput().
-    async function* singleTextMessage(text: string) {
-      yield { type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null, session_id: '' };
-    }
-
-    function drainIpcInput() {
-      let entries: string[] = [];
-      try { entries = readdirSync(ipcInputDir); } catch { return; }
-      for (const name of entries) {
-        if (!name.endsWith('.json')) continue;
-        const filePath = join(ipcInputDir, name);
-        try {
-          const raw = readFileSync(filePath, 'utf-8');
-          let parsed: { text?: string } = {};
-          try { parsed = JSON.parse(raw); } catch { }
-          const text = parsed.text?.trim();
-          if (text) {
-            console.log('[claude-session] IPC inject:', text.slice(0, 100));
-            (stream as any).streamInput(singleTextMessage(text)).catch((e: unknown) => {
-              console.error('[claude-session] streamInput error:', e);
-            });
-          }
-          try { unlinkSync(filePath); } catch { }
-        } catch { }
-      }
-    }
-
-    try {
-      ipcWatcher = watch(ipcInputDir, () => { if (!ipcWatcherClosed) drainIpcInput(); });
-      ipcWatcher.on('error', () => { /* degrade to fallback */ });
-    } catch { /* fs.watch unavailable, rely on fallback */ }
-
-    // Fallback polling every 5s in case fs.watch misses events (Docker mounts etc.)
-    ipcFallback = setInterval(() => { if (!ipcWatcherClosed) drainIpcInput(); }, 5000);
-
-    // Drain any pre-existing files immediately
-    drainIpcInput();
-
-    for await (const rawMessage of stream) {
-      const message = rawMessage as any;
-      console.log('[claude-session] stream message', message.type, message.subtype || '');
-      // Check if aborted
-      if (abortController.signal.aborted) {
-        yield {
-          type: 'error',
-          error: 'Query aborted by user',
-          timestamp: Date.now(),
-        };
-        break;
-      }
-
-      // Handle result messages (e.g., API errors from SDK)
-      if (message.type === 'result') {
-        if (message.is_error) {
-          yield {
-            type: 'error',
-            error: message.result || 'Claude Code error',
-            timestamp: Date.now(),
-          };
-        }
-        continue;
-      }
-
-      // Extract SDK session ID from init message
-      if (message.type === 'system' && message.subtype === 'init') {
-        session.sdkSessionId = message.session_id;
-        sessionDb.update(sessionId, { sdk_session_id: message.session_id });
-      }
-
-      // Track lastAssistantUuid for fine-grained resume on next query
-      if (message.type === 'result' && message.session_id) {
-        if (message.session_id !== session.sdkSessionId) {
-          session.sdkSessionId = message.session_id;
-          sessionDb.update(sessionId, { sdk_session_id: message.session_id });
-        }
-        if (message.last_assistant_uuid) {
-          session.lastAssistantUuid = message.last_assistant_uuid;
-          sessionDb.update(sessionId, { last_assistant_uuid: message.last_assistant_uuid });
-        }
-      }
-
-      if (processor) {
-        processor.processMessage(message);
-        // Only yield raw errors directly; all other events are emitted via processor callback
-        if (message.type === 'error') {
-          yield {
-            type: 'error',
-            error: message.error || 'Unknown error',
-            timestamp: Date.now(),
-          };
-        }
-        continue;
-      }
-
-      // Backwards-compatible path when no onStreamEvent provided
-      // Extract content for assistant messages (SDK nests the message under .message)
-      let content: string | undefined = message.content;
-      if (message.type === 'assistant' && !content && message.message) {
-        const msgContent = message.message.content;
-        if (Array.isArray(msgContent)) {
-          content = msgContent
-            .filter((c: any) => c.type === 'text')
-            .map((c: any) => c.text)
-            .join('');
-        } else if (typeof msgContent === 'string') {
-          content = msgContent;
-        }
-      }
-
-      // Convert to IStreamEvent
-      const event: IStreamEvent = {
-        type: message.type as IStreamEvent['type'],
-        subtype: message.subtype,
-        content,
-        tool_name: message.tool_name || message.message?.tool_name,
-        tool_input: message.tool_input || message.message?.tool_input,
-        tool_output: message.tool_output,
-        error: message.error,
-        session_id: message.session_id || session.sdkSessionId,
-        timestamp: Date.now(),
-      };
-
-      yield event;
-    }
-
-    if (processor) {
-      processor.cleanup();
-      const fullText = processor.getFullText();
-      if (fullText) {
-        yield {
-          type: 'assistant',
-          content: fullText,
-          timestamp: Date.now(),
-        };
-      }
-    }
-
-    // Mark as complete (include compaction flag for memory flush triggering)
-    yield {
-      type: 'complete',
-      timestamp: Date.now(),
-      hadCompaction: isCompacting,
-      isMemoryFlush,
-    } as IStreamEvent & { hadCompaction?: boolean; isMemoryFlush?: boolean };
-
-    // Update status
-    session.status = 'idle';
-    sessionDb.update(sessionId, { status: 'idle' });
-  } catch (error) {
-    // Update status to error
-    session.status = 'error';
-    sessionDb.update(sessionId, { status: 'error' });
-
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error('[claude-session] querySession error', errorMsg);
-
-    yield {
-      type: 'error',
-      error: errorMsg,
-      timestamp: Date.now(),
-    };
-  } finally {
-    // Clean up abort controller and IPC watcher
-    session.abortController = undefined;
-    closeIpcWatcher();
-  }
+  agentPool.release(sessionId);
 }
 
 // Save user message

@@ -307,23 +307,29 @@ async function installSkillForUser(
   userId: string,
   pkg: string
 ): Promise<{ success: boolean; installed?: string[]; error?: string }> {
+  console.log('[skills/install] starting install for user', userId, 'pkg', pkg);
   if (
     !/[\w\-]+\/[\w\-.]+(?:[@#][\w\-.\/]+)?$/.test(pkg) &&
     !/^https?:\/\//.test(pkg)
   ) {
+    console.log('[skills/install] invalid package format', pkg);
     return { success: false, error: 'Invalid package name format' };
   }
 
   const tempHome = mkdtempSync(join(os.tmpdir(), 'skill-install-'));
   const tempSkillsDir = join(tempHome, '.claude', 'skills');
   mkdirSync(tempSkillsDir, { recursive: true });
+  console.log('[skills/install] temp dir', tempHome);
 
   try {
+    console.log('[skills/install] running npx skills add...');
+    const start = Date.now();
     await execFileAsync(
       'npx',
       ['-y', 'skills', 'add', pkg, '--global', '--yes', '-a', 'claude-code'],
-      { timeout: 60_000, env: { ...process.env, HOME: tempHome } }
+      { timeout: 300_000, env: { ...process.env, HOME: tempHome } }
     );
+    console.log('[skills/install] npx completed in', Date.now() - start, 'ms');
 
     const installedEntries: string[] = [];
     if (existsSync(tempSkillsDir)) {
@@ -333,6 +339,7 @@ async function installSkillForUser(
         }
       }
     }
+    console.log('[skills/install] installed entries in temp:', installedEntries);
 
     if (installedEntries.length === 0) {
       return { success: false, error: 'No skills were installed — package may be invalid' };
@@ -340,12 +347,14 @@ async function installSkillForUser(
 
     const userDir = getUserSkillsDir(userId);
     mkdirSync(userDir, { recursive: true });
+    console.log('[skills/install] copying to userDir', userDir);
 
     for (const name of installedEntries) {
       const src = join(tempSkillsDir, name);
       const dest = join(userDir, name);
       if (existsSync(dest)) rmSync(dest, { recursive: true, force: true });
       copySkillToUser(src, dest);
+      console.log('[skills/install] copied', name, 'to', dest);
 
       // upsert DB record from SKILL.md
       const apiSkill = fileSkillToApi(name, userId);
@@ -359,6 +368,7 @@ async function installSkillForUser(
             content: apiSkill.content,
             config: apiSkill.config,
           });
+          console.log('[skills/install] updated DB record for', name);
         } else {
           skillDb.create({
             id: name,
@@ -370,17 +380,23 @@ async function installSkillForUser(
             content: apiSkill.content,
             config: apiSkill.config,
           });
+          console.log('[skills/install] created DB record for', name);
         }
+      } else {
+        console.log('[skills/install] fileSkillToApi returned null for', name);
       }
     }
 
     updateSkillsManifest(userId, pkg, installedEntries);
+    console.log('[skills/install] success', installedEntries);
     return { success: true, installed: installedEntries };
   } catch (error) {
+    console.error('[skills/install] error during install:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   } finally {
     try {
       rmSync(tempHome, { recursive: true, force: true });
+      console.log('[skills/install] cleaned temp dir', tempHome);
     } catch {
       /* ignore */
     }

@@ -54,6 +54,9 @@ const app = Fastify({
   logger: {
     level: 'info',
   },
+  // Skill installation via npx can take >60s (downloading CLI + cloning repo).
+  // Default Fastify connectionTimeout is 60s; raise it to avoid 500 on long installs.
+  connectionTimeout: 300_000,
 });
 
 async function init() {
@@ -270,15 +273,23 @@ async function init() {
   }
 }
 
+import { agentPool } from './services/agent-pool.js';
+
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\nShutting down gracefully...');
+  for (const { sessionId } of agentPool.listActive()) {
+    agentPool.kill(sessionId, 'SIGTERM');
+  }
   await app.close();
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
   console.log('\nShutting down gracefully...');
+  for (const { sessionId } of agentPool.listActive()) {
+    agentPool.kill(sessionId, 'SIGTERM');
+  }
   await app.close();
   process.exit(0);
 });

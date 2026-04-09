@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { authMiddleware } from './auth.js';
 import { groupDb, sessionDb } from '../db.js';
 import * as processRegistry from '../services/process-registry.js';
+import { agentPool } from '../services/agent-pool.js';
 
 export default async function statusRoutes(fastify: FastifyInstance) {
   // GET /api/status - 获取系统状态
@@ -11,7 +12,6 @@ export default async function statusRoutes(fastify: FastifyInstance) {
       const sessions = sessionDb.findAll();
       const runningSessions = sessions.filter((s: any) => s.status === 'running');
       const activeProcesses = processRegistry.countActive();
-
       const activeHostProcesses = activeProcesses || runningSessions.length;
 
       return reply.send({
@@ -23,10 +23,15 @@ export default async function statusRoutes(fastify: FastifyInstance) {
         activeHostProcesses,
         activeTotal: activeHostProcesses,
         maxConcurrentContainers: 20,
-        maxConcurrentHostProcesses: 5,
-        queueLength: 0,
+        maxConcurrentHostProcesses: agentPool.size,
+        queueLength: agentPool.queuedCount,
         dockerImageExists: true,
         claudeCodeVersions: { host: null, container: null, latest: null },
+        agentPool: {
+          slots: agentPool.size,
+          active: agentPool.activeCount,
+          queued: agentPool.queuedCount,
+        },
         groups: groups.map((g) => {
           const active = runningSessions.some((s: any) => s.workspace === g.id);
           return {
