@@ -11,6 +11,7 @@ import {
   stopWorkspace,
   waitForWorkspaceExit,
 } from '../services/process-registry.js';
+import { ensurePredefinedAgents } from '../services/agent-presets.js';
 import { validateAndResolvePath, isSystemPath } from './files.js';
 
 // Helper: 转换 Group 为前端格式
@@ -141,6 +142,9 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
 
       // 自动创建 session
       await getOrCreateSession(user.userId, groupId);
+
+      // 自动创建预定义 Sub-Agent
+      ensurePredefinedAgents(groupId);
 
       const groupInfo = toGroupInfo(group, user.userId);
       broadcastGroupCreated(groupId, folder, name, user.userId);

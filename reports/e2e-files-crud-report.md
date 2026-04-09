@@ -1,6 +1,6 @@
 # Playwright E2E 文件管理 CRUD 测试报告
 
-生成时间: 2026-04-06T14:34:30.510Z
+生成时间: 2026-04-08T01:00:56.192Z
 测试地址: http://localhost:5173
 API 地址: http://localhost:3000
 

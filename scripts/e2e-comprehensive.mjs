@@ -157,7 +157,7 @@ class PlaywrightTester {
     await this.page.waitForTimeout(options.wait || 2000);
 
     const bodyText = await this.page.evaluate(() => document.body.innerText).catch(() => '');
-    const hasError = bodyText.includes('application error') || bodyText.includes('出错了') || bodyText.includes('Error') || bodyText.includes('TypeError');
+    const hasError = bodyText.includes('application error') || bodyText.includes('出错了') || bodyText.includes('Runtime Error') || bodyText.includes('Unexpected Error') || bodyText.includes('TypeError');
     const isBlank = bodyText.trim().length < 50;
     const is404 = bodyText.includes('404') || bodyText.includes('Not Found');
 
@@ -525,6 +525,11 @@ async function main() {
   }
   await tester.generateReport();
   await tester.teardown();
+  const critical = tester.issues.filter(i => i.severity === 'critical');
+  const errors = tester.issues.filter(i => i.severity === 'error');
+  if (critical.length > 0 || errors.length > 0) {
+    process.exit(1);
+  }
 }
 
 main().catch(err => {

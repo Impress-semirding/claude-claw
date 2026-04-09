@@ -8,6 +8,7 @@ export interface ISessionInfo {
   workspace: string;
   agentId?: string;
   sdkSessionId?: string;
+  lastAssistantUuid?: string;
   configDir: string;
   workDir: string;
   tmpDir: string;
@@ -107,6 +108,8 @@ export interface IStreamEvent {
   error?: string;
   session_id?: string;
   timestamp: number;
+  hadCompaction?: boolean;
+  isMemoryFlush?: boolean;
 }
 
 export interface IClaudeQueryOptions {

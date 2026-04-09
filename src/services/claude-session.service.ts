@@ -1,9 +1,9 @@
-import { mkdirSync, rmSync, existsSync, copyFileSync, readdirSync, readFileSync, cpSync } from 'fs';
+import { mkdirSync, rmSync, existsSync, copyFileSync, readdirSync, readFileSync, cpSync, watch, unlinkSync } from 'fs';
 import { resolve, join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { appConfig } from '../config.js';
 import { sessionDb, messageDb, groupDb } from '../db.js';
-import type { ISessionInfo, IStreamEvent, StreamEvent, IGroupConfig } from '../types.js';
+import type { ISessionInfo, IStreamEvent, StreamEvent } from '../types.js';
 import { getIsolator } from './workspace-isolator/factory.js';
 import * as processRegistry from './process-registry.js';
 import { ClawStreamProcessor } from './stream-processor.js';
@@ -94,11 +94,13 @@ function buildCompactSummary(sessionId: string): string {
 }
 
 function buildCanUseTool(
-  groupConfig?: IGroupConfig
+  allowedTools?: string[],
+  disallowedTools?: string[]
 ): CanUseTool | undefined {
-  const allowed = groupConfig?.allowedTools;
-  const disallowed = groupConfig?.disallowedTools;
-  if ((!allowed || allowed.length === 0) && (!disallowed || disallowed.length === 0)) {
+  if (
+    (!allowedTools || allowedTools.length === 0) &&
+    (!disallowedTools || disallowedTools.length === 0)
+  ) {
     return undefined;
   }
 
@@ -107,12 +109,12 @@ function buildCanUseTool(
     _input: Record<string, unknown>,
     _options: { signal: AbortSignal; toolUseID: string; agentID?: string }
   ): Promise<PermissionResult> => {
-    console.log('[canUseTool] checking', toolName, 'allowed=', allowed, 'disallowed=', disallowed);
-    if (disallowed && disallowed.length > 0 && disallowed.includes(toolName)) {
+    console.log('[canUseTool] checking', toolName, 'allowed=', allowedTools, 'disallowed=', disallowedTools);
+    if (disallowedTools && disallowedTools.length > 0 && disallowedTools.includes(toolName)) {
       console.log('[canUseTool] DENY', toolName);
       return { behavior: 'deny', message: `Tool ${toolName} is disallowed by group policy` };
     }
-    if (allowed && allowed.length > 0 && !allowed.includes(toolName)) {
+    if (allowedTools && allowedTools.length > 0 && !allowedTools.includes(toolName)) {
       console.log('[canUseTool] DENY', toolName);
       return { behavior: 'deny', message: `Tool ${toolName} is not in the allowed tools list` };
     }
@@ -392,6 +394,8 @@ export async function* querySession({
   systemPrompt,
   onStreamEvent,
   turnId,
+  isMemoryFlush = false,
+  agentOptions,
 }: {
   userId: string;
   workspace: string;
@@ -401,6 +405,12 @@ export async function* querySession({
   systemPrompt?: string;
   onStreamEvent?: (event: StreamEvent) => void;
   turnId?: string;
+  isMemoryFlush?: boolean;
+  agentOptions?: {
+    maxTurns?: number;
+    allowedTools?: string[];
+    disallowedTools?: string[];
+  };
 }): AsyncGenerator<IStreamEvent> {
   const key = sessionKey(userId, workspace, sessionId);
   let session = sessions.get(key);
@@ -435,7 +445,8 @@ export async function* querySession({
   if (isCompacting) {
     console.log('[claude-session] compacting session', sessionId, 'message count exceeded threshold');
     session.sdkSessionId = undefined;
-    sessionDb.update(sessionId, { sdk_session_id: undefined });
+    session.lastAssistantUuid = undefined;
+    sessionDb.update(sessionId, { sdk_session_id: undefined, last_assistant_uuid: undefined });
   }
 
   // Build absolute paths
@@ -491,20 +502,110 @@ export async function* querySession({
     env.ANTHROPIC_API_KEY = activeSecret.anthropicApiKey;
   }
 
+  // Build system prompt: use claude_code preset with custom content appended.
+  // The preset injects the full Claude Code system prompt (tools, rules, CLAUDE.md from cwd).
+  // Our custom content (user memory, agent prompt, group config) goes into `append`.
+  const builtSystemPrompt: { type: 'preset'; preset: 'claude_code'; append?: string } = systemPrompt
+    ? { type: 'preset', preset: 'claude_code', append: systemPrompt }
+    : { type: 'preset', preset: 'claude_code' };
+
+  // Effective tool constraints: agentOptions override groupConfig
+  const effectiveAllowedTools = agentOptions?.allowedTools ?? groupConfig?.allowedTools;
+  const effectiveDisallowedTools = agentOptions?.disallowedTools ?? groupConfig?.disallowedTools;
+
   // Build options
   const options: any = {
     cwd: absWorkDir,
     env,
     mcpServers,
     model,
-    maxTurns: appConfig.claude.maxTurns || 100,
+    maxTurns: agentOptions?.maxTurns ?? appConfig.claude.maxTurns ?? 100,
     maxBudgetUsd: appConfig.claude.maxBudgetUsd || 10,
     permissionMode:
-      groupConfig?.allowedTools?.length || groupConfig?.disallowedTools?.length
+      effectiveAllowedTools?.length || effectiveDisallowedTools?.length
         ? 'default'
         : 'bypassPermissions',
     allowDangerouslySkipPermissions:
-      !groupConfig?.allowedTools?.length && !groupConfig?.disallowedTools?.length,
+      !effectiveAllowedTools?.length && !effectiveDisallowedTools?.length,
+    systemPrompt: builtSystemPrompt,
+    thinking: { type: 'adaptive' },
+    hooks: {
+      PreCompact: [
+        {
+          type: 'command',
+          command: `node -e "
+const fs = require('fs');
+const path = require('path');
+const archiveDir = path.join('${absWorkDir}', 'conversations');
+fs.mkdirSync(archiveDir, { recursive: true });
+let data = '';
+process.stdin.on('data', d => data += d);
+process.stdin.on('end', () => {
+  try {
+    const input = JSON.parse(data);
+    const transcriptPath = input.transcript_path || '';
+    const agentId = input.agent_id || '';
+
+    // Skip sub-agent compactions to avoid archiving unchanged transcripts
+    if (agentId) process.exit(0);
+
+    let messages = [];
+    if (transcriptPath && fs.existsSync(transcriptPath)) {
+      const lines = fs.readFileSync(transcriptPath, 'utf-8').split('\\n');
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const entry = JSON.parse(line);
+          if (entry.type === 'user' && entry.message && entry.message.content) {
+            const c = entry.message.content;
+            const text = typeof c === 'string' ? c : c.filter(x => x.type === 'text').map(x => x.text).join('');
+            if (text.trim()) messages.push({ role: 'user', content: text });
+          } else if (entry.type === 'assistant' && entry.message && entry.message.content) {
+            const text = entry.message.content.filter(x => x.type === 'text').map(x => x.text).join('');
+            if (text.trim()) messages.push({ role: 'assistant', content: text });
+          }
+        } catch {}
+      }
+    }
+
+    // 1. Archive as Markdown
+    if (messages.length > 0) {
+      const date = new Date().toISOString().split('T')[0];
+      const mdFile = path.join(archiveDir, date + '-session.md');
+      const mdLines = ['# Conversation', '', 'Archived: ' + new Date().toLocaleString(), '', '---', ''];
+      for (const msg of messages) {
+        const sender = msg.role === 'user' ? 'User' : 'Claude';
+        const content = msg.content.length > 2000 ? msg.content.slice(0, 2000) + '...' : msg.content;
+        mdLines.push('**' + sender + '**: ' + content.replace(/\\n/g, ' '), '');
+      }
+      try { fs.writeFileSync(mdFile, mdLines.join('\\n'), 'utf-8'); } catch {}
+    }
+
+    // 2. Trim JSONL: remove entries before last compact_boundary
+    if (transcriptPath && fs.existsSync(transcriptPath)) {
+      try {
+        const rawLines = fs.readFileSync(transcriptPath, 'utf-8').split('\\n').filter(l => l.trim());
+        let lastBoundary = -1;
+        for (let i = rawLines.length - 1; i >= 0; i--) {
+          try {
+            const e = JSON.parse(rawLines[i]);
+            if (e.type === 'system' && e.subtype === 'compact_boundary') { lastBoundary = i; break; }
+          } catch {}
+        }
+        if (lastBoundary > 50) {
+          const trimmed = rawLines.slice(lastBoundary).join('\\n') + '\\n';
+          const tmp = transcriptPath + '.trim-tmp';
+          fs.writeFileSync(tmp, trimmed, 'utf-8');
+          fs.renameSync(tmp, transcriptPath);
+        }
+      } catch {}
+    }
+  } catch {}
+});
+"`,
+        },
+      ],
+    },
     spawnClaudeCodeProcess: (spawnOpts: any) => {
       console.log('[claude-session] spawnClaudeCodeProcess', spawnOpts.command, spawnOpts.args?.slice(0, 5));
       const proc = isolator.spawn({
@@ -527,21 +628,34 @@ export async function* querySession({
     },
   };
 
+  // Add user global dir as additional directory so the preset picks up CLAUDE.md from there
+  const userGlobalDir = resolve(appConfig.dataDir, 'groups', 'user-global', userId);
+  mkdirSync(userGlobalDir, { recursive: true });
+  options.additionalDirectories = [userGlobalDir];
+
   // Resume SDK session unless compacting
   if (!isCompacting && session.sdkSessionId) {
     options.resume = session.sdkSessionId;
+    if (session.lastAssistantUuid) {
+      options.resumeSessionAt = session.lastAssistantUuid;
+    }
   }
 
+  // Enable partial message recovery and agent progress tracking
+  options.includePartialMessages = true;
+  options.agentProgressSummaries = true;
+  options.settingSources = ['project', 'user'];
+
   // Tool loop controls
-  const canUseTool = buildCanUseTool(groupConfig);
+  const canUseTool = buildCanUseTool(effectiveAllowedTools, effectiveDisallowedTools);
   if (canUseTool) {
     options.canUseTool = canUseTool;
   }
-  if (groupConfig?.allowedTools && groupConfig.allowedTools.length > 0) {
-    options.allowedTools = groupConfig.allowedTools;
+  if (effectiveAllowedTools && effectiveAllowedTools.length > 0) {
+    options.allowedTools = effectiveAllowedTools;
   }
-  if (groupConfig?.disallowedTools && groupConfig.disallowedTools.length > 0) {
-    options.disallowedTools = groupConfig.disallowedTools;
+  if (effectiveDisallowedTools && effectiveDisallowedTools.length > 0) {
+    options.disallowedTools = effectiveDisallowedTools;
   }
 
   // Only pass sandbox option when explicitly enabled;
@@ -553,13 +667,13 @@ export async function* querySession({
     };
   }
 
-  // Build prompt: prepend compact summary if compacting, then system prompt
-  let effectivePrompt = prompt;
+  // Build prompt: prepend compact summary if compacting.
+  // systemPrompt is now handled via the claude_code preset (options.systemPrompt.append).
+  let fullPrompt = prompt;
   if (isCompacting) {
     const compactSummary = buildCompactSummary(sessionId);
-    effectivePrompt = `${compactSummary}\n\n${effectivePrompt}`;
+    fullPrompt = `${compactSummary}\n\n${fullPrompt}`;
   }
-  const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${effectivePrompt}` : effectivePrompt;
 
   // Load Claude SDK (outside retry — module loading is not retriable)
   const claudeQuery = await loadClaudeQuery();
@@ -611,8 +725,62 @@ export async function* querySession({
     return;
   }
 
+  // IPC mid-query injection setup — declared outside try so finally can clean up
+  const ipcInputDir = resolve(appConfig.dataDir, 'ipc', sessionId, 'input');
+  mkdirSync(ipcInputDir, { recursive: true });
+
+  let ipcWatcher: ReturnType<typeof watch> | null = null;
+  let ipcFallback: ReturnType<typeof setInterval> | null = null;
+  let ipcWatcherClosed = false;
+
+  function closeIpcWatcher() {
+    ipcWatcherClosed = true;
+    try { ipcWatcher?.close(); } catch { }
+    if (ipcFallback) { clearInterval(ipcFallback); ipcFallback = null; }
+  }
+
   try {
     const processor = onStreamEvent ? new ClawStreamProcessor(onStreamEvent, turnId || `turn-${Date.now()}`) : null;
+
+    // IPC mid-query injection: watch per-session input directory for new messages.
+    // Any JSON file dropped into this dir while query is running will be injected
+    // into the active Claude session via stream.streamInput().
+    async function* singleTextMessage(text: string) {
+      yield { type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null, session_id: '' };
+    }
+
+    function drainIpcInput() {
+      let entries: string[] = [];
+      try { entries = readdirSync(ipcInputDir); } catch { return; }
+      for (const name of entries) {
+        if (!name.endsWith('.json')) continue;
+        const filePath = join(ipcInputDir, name);
+        try {
+          const raw = readFileSync(filePath, 'utf-8');
+          let parsed: { text?: string } = {};
+          try { parsed = JSON.parse(raw); } catch { }
+          const text = parsed.text?.trim();
+          if (text) {
+            console.log('[claude-session] IPC inject:', text.slice(0, 100));
+            (stream as any).streamInput(singleTextMessage(text)).catch((e: unknown) => {
+              console.error('[claude-session] streamInput error:', e);
+            });
+          }
+          try { unlinkSync(filePath); } catch { }
+        } catch { }
+      }
+    }
+
+    try {
+      ipcWatcher = watch(ipcInputDir, () => { if (!ipcWatcherClosed) drainIpcInput(); });
+      ipcWatcher.on('error', () => { /* degrade to fallback */ });
+    } catch { /* fs.watch unavailable, rely on fallback */ }
+
+    // Fallback polling every 5s in case fs.watch misses events (Docker mounts etc.)
+    ipcFallback = setInterval(() => { if (!ipcWatcherClosed) drainIpcInput(); }, 5000);
+
+    // Drain any pre-existing files immediately
+    drainIpcInput();
 
     for await (const rawMessage of stream) {
       const message = rawMessage as any;
@@ -643,6 +811,18 @@ export async function* querySession({
       if (message.type === 'system' && message.subtype === 'init') {
         session.sdkSessionId = message.session_id;
         sessionDb.update(sessionId, { sdk_session_id: message.session_id });
+      }
+
+      // Track lastAssistantUuid for fine-grained resume on next query
+      if (message.type === 'result' && message.session_id) {
+        if (message.session_id !== session.sdkSessionId) {
+          session.sdkSessionId = message.session_id;
+          sessionDb.update(sessionId, { sdk_session_id: message.session_id });
+        }
+        if (message.last_assistant_uuid) {
+          session.lastAssistantUuid = message.last_assistant_uuid;
+          sessionDb.update(sessionId, { last_assistant_uuid: message.last_assistant_uuid });
+        }
       }
 
       if (processor) {
@@ -701,11 +881,13 @@ export async function* querySession({
       }
     }
 
-    // Mark as complete
+    // Mark as complete (include compaction flag for memory flush triggering)
     yield {
       type: 'complete',
       timestamp: Date.now(),
-    };
+      hadCompaction: isCompacting,
+      isMemoryFlush,
+    } as IStreamEvent & { hadCompaction?: boolean; isMemoryFlush?: boolean };
 
     // Update status
     session.status = 'idle';
@@ -724,8 +906,9 @@ export async function* querySession({
       timestamp: Date.now(),
     };
   } finally {
-    // Clean up abort controller
+    // Clean up abort controller and IPC watcher
     session.abortController = undefined;
+    closeIpcWatcher();
   }
 }
 
@@ -786,6 +969,7 @@ export function loadSessionsFromDb() {
         workspace: row.workspace as string,
         agentId: (row.agentId as string | undefined) || undefined,
         sdkSessionId: row.sdkSessionId as string | undefined,
+        lastAssistantUuid: row.lastAssistantUuid as string | undefined,
         configDir: row.configDir as string,
         workDir,
         tmpDir: row.tmpDir as string,

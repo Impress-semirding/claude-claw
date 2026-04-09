@@ -17,6 +17,8 @@ import { initSchema } from './db.js';
 // Import services
 import { initAdminUser } from './services/auth.service.js';
 import { loadSessionsFromDb, cleanupIdleSessions } from './services/claude-session.service.js';
+import { runDailySummaryIfNeeded } from './daily-summary.js';
+import { ensurePredefinedAgentsForAllGroups } from './services/agent-presets.js';
 
 // Import routes
 import authRoutes, { authMiddleware, adminMiddleware } from './routes/auth.js';
@@ -89,6 +91,9 @@ async function init() {
     loadSessionsFromDb();
     console.log('Sessions loaded from database');
 
+    // Ensure predefined sub-agents for all existing groups
+    ensurePredefinedAgentsForAllGroups();
+
     // Start cleanup interval
     setInterval(() => {
       const cleaned = cleanupIdleSessions();
@@ -96,6 +101,13 @@ async function init() {
         console.log(`Cleaned up ${cleaned} idle sessions`);
       }
     }, 60000); // Every minute
+
+    // Daily heartbeat summary (runs within 2:00–3:00 AM window, throttled to once per 55min)
+    setInterval(() => {
+      runDailySummaryIfNeeded().catch((err) =>
+        console.error('[daily-summary] interval error:', err)
+      );
+    }, 60000); // Check every minute
 
     // Health check
     app.get('/health', async (_request, reply) => {

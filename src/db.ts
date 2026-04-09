@@ -24,7 +24,7 @@ const db: Database.Database = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
 // Schema version for migrations
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 // Initialize schema
 export function initSchema() {
@@ -79,6 +79,7 @@ export function initSchema() {
       workspace TEXT NOT NULL,
       agent_id TEXT,
       sdk_session_id TEXT,
+      last_assistant_uuid TEXT,
       config_dir TEXT NOT NULL,
       work_dir TEXT NOT NULL,
       tmp_dir TEXT NOT NULL,
@@ -349,6 +350,10 @@ function runMigrations() {
 
   if (currentVersion < 4) {
     try { db.exec(`ALTER TABLE sessions ADD COLUMN agent_id TEXT`); } catch { /* may already exist */ }
+  }
+
+  if (currentVersion < 5) {
+    try { db.exec(`ALTER TABLE sessions ADD COLUMN last_assistant_uuid TEXT`); } catch { /* may already exist */ }
   }
 
   db.prepare('INSERT OR REPLACE INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
@@ -678,8 +683,8 @@ export const sessionDb = {
   }) {
     const now = Date.now();
     const stmt = db.prepare(`
-      INSERT INTO sessions (id, user_id, workspace, agent_id, sdk_session_id, config_dir, work_dir, tmp_dir, status, created_at, last_active_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO sessions (id, user_id, workspace, agent_id, sdk_session_id, last_assistant_uuid, config_dir, work_dir, tmp_dir, status, created_at, last_active_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       session.id,
@@ -687,6 +692,7 @@ export const sessionDb = {
       session.workspace,
       session.agentId || null,
       session.sdkSessionId || null,
+      null,
       session.configDir,
       session.workDir,
       session.tmpDir,
@@ -700,6 +706,7 @@ export const sessionDb = {
       workspace: session.workspace,
       agentId: session.agentId || null,
       sdkSessionId: session.sdkSessionId,
+      lastAssistantUuid: undefined,
       configDir: session.configDir,
       workDir: session.workDir,
       tmpDir: session.tmpDir,
@@ -720,6 +727,7 @@ export const sessionDb = {
       workspace: row.workspace,
       agentId: row.agent_id,
       sdkSessionId: row.sdk_session_id,
+      lastAssistantUuid: row.last_assistant_uuid as string | undefined,
       configDir: row.config_dir,
       workDir: row.work_dir,
       tmpDir: row.tmp_dir,
@@ -743,6 +751,7 @@ export const sessionDb = {
       workspace: row.workspace,
       agentId: row.agent_id,
       sdkSessionId: row.sdk_session_id,
+      lastAssistantUuid: row.last_assistant_uuid as string | undefined,
       configDir: row.config_dir,
       workDir: row.work_dir,
       tmpDir: row.tmp_dir,
@@ -760,6 +769,7 @@ export const sessionDb = {
       workspace: row.workspace,
       agentId: row.agent_id,
       sdkSessionId: row.sdk_session_id,
+      lastAssistantUuid: row.last_assistant_uuid as string | undefined,
       configDir: row.config_dir,
       workDir: row.work_dir,
       tmpDir: row.tmp_dir,
@@ -779,6 +789,7 @@ export const sessionDb = {
       workspace: row.workspace,
       agentId: row.agent_id,
       sdkSessionId: row.sdk_session_id,
+      lastAssistantUuid: row.last_assistant_uuid as string | undefined,
       configDir: row.config_dir,
       workDir: row.work_dir,
       tmpDir: row.tmp_dir,
@@ -801,6 +812,7 @@ export const sessionDb = {
       workspace: row.workspace,
       agentId: row.agent_id,
       sdkSessionId: row.sdk_session_id,
+      lastAssistantUuid: row.last_assistant_uuid as string | undefined,
       configDir: row.config_dir,
       workDir: row.work_dir,
       tmpDir: row.tmp_dir,

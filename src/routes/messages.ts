@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware } from './auth.js';
-import { groupDb, messageDb, mcpServerDb, agentDb } from '../db.js';
+import { groupDb, messageDb, mcpServerDb } from '../db.js';
 import { randomUUID } from 'crypto';
 import { resolve } from 'path';
 import { appConfig } from '../config.js';
@@ -16,8 +16,8 @@ import {
   broadcastTyping,
 } from '../services/ws.service.js';
 import type { WsClientInfo } from '../services/ws.service.js';
-import type { IStreamEvent } from '../types.js';
-import { getMemoryFiles, getClaudeMds } from '../services/memory.js';
+import { resolveAgent } from '../services/agent-presets.js';
+import { ClaudeAgent, AgentEnvironment } from '../services/agent.js';
 
 // Track running queries per group to broadcast runner_state
 const runningQueries = new Map<string, boolean>();
@@ -97,58 +97,34 @@ async function handleMessageSend(
     }
   }
 
-  // Build system prompt: hierarchical memory + group system prompt + agent prompt
+  // Resolve agent and build environment
+  const agent = resolveAgent(chatJid, agentId);
   const groupConfig = group.config || {};
-  let systemPrompt = groupConfig.systemPrompt || '';
-
   const workspaceDir = resolve(appConfig.claude.baseDir, group.folder || '');
   const userGlobalPath = resolve(appConfig.dataDir, 'groups', 'user-global', userId, 'CLAUDE.md');
 
-  // Load hierarchical memory files (project, local, user global, includes, rules)
-  const memoryFiles = await getMemoryFiles(workspaceDir, { userGlobalPath });
-  const memoryPrompt = getClaudeMds(memoryFiles);
-
-  if (memoryPrompt) {
-    systemPrompt = systemPrompt
-      ? `${memoryPrompt}\n\n${systemPrompt}`
-      : memoryPrompt;
-  }
-
-  // Add agent-specific prompt for conversation agents
-  if (agentId) {
-    const agent = agentDb.findById(agentId);
-    if (agent?.prompt) {
-      systemPrompt = systemPrompt
-        ? `${agent.prompt.trim()}\n\n${systemPrompt}`
-        : agent.prompt.trim();
-    }
-  }
-
-  const mcpNames = Object.keys(enabledMcpServers);
-  console.log('[messages] startQuery', {
+  const env: AgentEnvironment = {
     userId,
+    email: displayName,
     chatJid,
-    sessionId: session.sessionId,
-    agentId,
-    promptLength: content.length,
-    systemPromptLength: systemPrompt.length,
-    mcpCount: mcpNames.length,
-    mcpNames,
-  });
-  console.log('[messages] mcpPayload:', JSON.stringify(enabledMcpServers));
+    workspaceDir,
+    userGlobalPath,
+    groupConfig,
+  };
 
-  startQuery(userId, chatJid, session.sessionId, content, enabledMcpServers, systemPrompt, agentId);
+  // Fire-and-forget the agent query
+  runAgentQuery(agent, env, session.sessionId, content, enabledMcpServers, chatJid, agentId);
 
   return { ok: true, messageId, timestamp };
 }
 
-async function startQuery(
-  userId: string,
-  chatJid: string,
+async function runAgentQuery(
+  agent: ClaudeAgent,
+  env: AgentEnvironment,
   sessionId: string,
-  prompt: string,
+  content: string,
   mcpServers: Record<string, unknown>,
-  systemPrompt?: string,
+  chatJid: string,
   agentId?: string
 ): Promise<void> {
   const queryKey = agentId ? `${chatJid}:${agentId}` : chatJid;
@@ -160,57 +136,87 @@ async function startQuery(
   broadcastRunnerState(chatJid, 'running', agentId);
   broadcastTyping(chatJid, true, agentId);
 
-  let assistantText = '';
   let turnId = `turn-${Date.now()}`;
+  let result: import('../services/agent.js').AgentQueryResult | undefined;
 
   const mcpNames = Object.keys(mcpServers);
-  console.log('[messages] startQuery', { userId, chatJid, sessionId, agentId, promptLength: prompt.length, mcpCount: mcpNames.length, mcpNames });
+  console.log('[messages] runAgentQuery', {
+    userId: env.userId,
+    chatJid,
+    sessionId,
+    agentId,
+    promptLength: content.length,
+    mcpCount: mcpNames.length,
+    mcpNames,
+  });
 
   try {
-    const stream = querySession({
-      userId,
-      workspace: chatJid,
+    result = await agent.query(env, content, {
       sessionId,
-      prompt,
       mcpServers,
-      systemPrompt,
       onStreamEvent: (ev) => {
         broadcastStreamEvent(chatJid, ev, agentId);
         if (ev.eventType === 'text_delta' || ev.eventType === 'thinking_delta') {
           broadcastTyping(chatJid, false, agentId);
         }
       },
-      turnId,
+      onTypingChange: (isTyping) => {
+        broadcastTyping(chatJid, isTyping, agentId);
+      },
     });
 
-    for await (const event of stream) {
-      console.log('[messages] stream event', event.type, event.subtype || '');
-      const ev = event as IStreamEvent;
+    turnId = result.turnId;
 
-      if (ev.type === 'system' && ev.subtype === 'init') {
-        continue;
-      }
-
-      if (ev.type === 'assistant' && ev.content) {
-        assistantText = ev.content;
-      } else if (ev.type === 'error') {
-        broadcastStreamEvent(chatJid, {
-          eventType: 'error',
-          error: ev.error || 'Unknown error',
-          turnId,
-        }, agentId);
-      } else if (ev.type === 'complete') {
-        broadcastStreamEvent(chatJid, {
-          eventType: 'complete',
-          turnId,
-        }, agentId);
-      }
+    if (result.error) {
+      console.error('[messages] agent query error', result.error);
     }
 
-    console.log('[messages] stream loop ended, assistantText.length=', assistantText.trim().length);
+    // Handle overflow partial recovery
+    if (result.contextOverflow && result.assistantText) {
+      console.log('[messages] saving overflow_partial, length', result.assistantText.trim().length);
+      const partialMsgId = randomUUID();
+      const partialTimestamp = new Date().toISOString();
+      messageDb.create({
+        id: partialMsgId,
+        sessionId,
+        userId: '__assistant__',
+        role: 'assistant',
+        content: result.assistantText.trim(),
+        metadata: {
+          senderName: 'Claude',
+          turnId,
+          timestamp: partialTimestamp,
+          sourceKind: 'overflow_partial',
+          finalizationReason: 'context_overflow',
+          agentId,
+        },
+      });
 
-    if (assistantText.trim()) {
-      console.log('[messages] saving assistant message, length', assistantText.trim().length);
+      broadcastNewMessage(chatJid, {
+        id: partialMsgId,
+        chat_jid: chatJid,
+        sender: '__assistant__',
+        sender_name: 'Claude',
+        content: result.assistantText.trim() + '\n\n_（上下文溢出，部分回复已保存）_',
+        timestamp: partialTimestamp,
+        is_from_me: true,
+        turn_id: turnId,
+        session_id: sessionId,
+        sdk_message_uuid: null,
+        source_kind: 'overflow_partial',
+        finalization_reason: 'context_overflow',
+      }, agentId);
+      return;
+    }
+
+    // Handle unrecoverable errors
+    if (result.unrecoverableError) {
+      console.log('[messages] unrecoverable error, not saving assistant message');
+      return;
+    }
+
+    if (result.assistantText.trim()) {
+      console.log('[messages] saving assistant message, length', result.assistantText.trim().length);
       const assistantMsgId = randomUUID();
       const assistantTimestamp = new Date().toISOString();
       messageDb.create({
@@ -218,7 +224,7 @@ async function startQuery(
         sessionId,
         userId: '__assistant__',
         role: 'assistant',
-        content: assistantText.trim(),
+        content: result.assistantText.trim(),
         metadata: {
           senderName: 'Claude',
           turnId,
@@ -235,7 +241,7 @@ async function startQuery(
         chat_jid: chatJid,
         sender: '__assistant__',
         sender_name: 'Claude',
-        content: assistantText.trim(),
+        content: result.assistantText.trim(),
         timestamp: assistantTimestamp,
         is_from_me: true,
         turn_id: turnId,
@@ -250,7 +256,7 @@ async function startQuery(
     }
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error('[messages] startQuery error', errorMsg);
+    console.error('[messages] runAgentQuery error', errorMsg);
     broadcastStreamEvent(chatJid, {
       eventType: 'error',
       error: errorMsg,
@@ -260,6 +266,72 @@ async function startQuery(
     runningQueries.delete(queryKey);
     broadcastRunnerState(chatJid, 'idle', agentId);
     broadcastTyping(chatJid, false, agentId);
+
+    // Trigger memory flush after compaction (non-blocking)
+    if (result?.hadCompaction) {
+      console.log('[messages] compaction happened, triggering memory flush');
+      agent.buildSystemPrompt(env).then((systemPrompt) => {
+        runMemoryFlush(env.userId, chatJid, sessionId, mcpServers, systemPrompt).catch((err) => {
+          console.error('[messages] memory flush error:', err);
+        });
+      }).catch((err) => {
+        console.error('[messages] buildSystemPrompt for flush error:', err);
+      });
+    }
+  }
+}
+
+/**
+ * Run memory flush query after compaction (inspired by happyclaw)
+ * This is a background operation that updates CLAUDE.md and memory files.
+ */
+async function runMemoryFlush(
+  userId: string,
+  chatJid: string,
+  sessionId: string,
+  mcpServers: Record<string, unknown>,
+  systemPrompt: string
+): Promise<void> {
+  const flushKey = `flush:${chatJid}`;
+  if (runningQueries.get(flushKey)) {
+    console.log('[messages] memory flush already running, skipping');
+    return;
+  }
+
+  runningQueries.set(flushKey, true);
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const flushPrompt = [
+      '上下文压缩前记忆刷新。',
+      '**优先检查全局记忆**：先 Read /workspace/global/CLAUDE.md，如果有「待记录」字段且你已获知对应信息（用户身份、偏好、常用项目等），用 Edit 工具立即填写。',
+      '用户明确要求记住的内容，以及下次对话仍可能用到的信息，也写入全局记忆。',
+      `然后使用 memory_append 将时效性记忆保存到 memory/${today}.md（今日进展、临时决策、待办等）。`,
+      '如需确认上下文，可先用 memory_search/memory_get 查阅。',
+      '如果没有值得保存的内容，回复一个字：OK。',
+    ].join(' ');
+
+    console.log('[messages] starting memory flush query');
+
+    const stream = querySession({
+      userId,
+      workspace: chatJid,
+      sessionId,
+      prompt: flushPrompt,
+      mcpServers,
+      systemPrompt,
+      isMemoryFlush: true,
+    });
+
+    // Consume the stream but don't broadcast to user
+    for await (const _event of stream) {
+      // Silently consume
+    }
+
+    console.log('[messages] memory flush completed');
+  } catch (err) {
+    console.error('[messages] memory flush error:', err);
+  } finally {
+    runningQueries.delete(flushKey);
   }
 }
 

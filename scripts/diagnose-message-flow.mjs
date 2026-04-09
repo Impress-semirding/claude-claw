@@ -1,7 +1,7 @@
 /**
  * 端到端消息流诊断脚本
  * 用法：node scripts/diagnose-message-flow.mjs [username] [password]
- * 默认凭证：admin / admin123
+ * 默认凭证：admin@example.com / admin123
  */
 import http from 'http';
 import WebSocket from 'ws';
@@ -9,7 +9,7 @@ import WebSocket from 'ws';
 const BASE = process.env.CLAW_BASE_URL || 'http://localhost:3000';
 const WS = BASE.replace(/^http/, 'ws') + '/ws';
 const CREDENTIALS = {
-  username: process.argv[2] || 'admin',
+  username: process.argv[2] || 'admin@example.com',
   password: process.argv[3] || 'admin123',
 };
 

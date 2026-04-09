@@ -571,7 +571,10 @@ export class ClawStreamProcessor {
           this.activeSkillToolUseId = null;
         }
         this.emit({ eventType: 'text_delta', text: block.text, turnId: this.turnId });
-        this.fullTextAccumulator += block.text;
+        // Avoid double-counting text already received via stream_event deltas
+        if (!this.fullTextAccumulator.endsWith(block.text)) {
+          this.fullTextAccumulator += block.text;
+        }
       } else if (block.type === 'tool_use' && block.id) {
         this.handleToolUseStart(block, null, false);
       }
