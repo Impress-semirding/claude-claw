@@ -4,8 +4,9 @@ import { spawn } from 'child_process';
 import { createInterface } from 'readline';
 import { v4 as uuidv4 } from 'uuid';
 import { appConfig } from '../config.js';
-import { sessionDb, messageDb, groupDb } from '../db.js';
+import { sessionDb, messageDb, groupDb, taskDb } from '../db.js';
 import type { ISessionInfo, IStreamEvent, StreamEvent } from '../types.js';
+import { broadcastNewMessage } from './ws.service.js';
 import { getIsolator } from './workspace-isolator/factory.js';
 import * as processRegistry from './process-registry.js';
 import { ClawStreamProcessor } from './stream-processor.js';
@@ -733,6 +734,13 @@ process.stdin.on('end', () => {
         ipcDir: ipcInputDir,
         allowedTools: agentOptions?.allowedTools ?? groupConfig?.allowedTools,
         disallowedTools: agentOptions?.disallowedTools ?? groupConfig?.disallowedTools,
+        mcpEnv: {
+          userId,
+          chatJid: workspace,
+          workspaceDir: absWorkDir,
+          userGlobalPath: resolve(appConfig.dataDir, 'groups', 'user-global', userId, 'CLAUDE.md'),
+          groupConfig,
+        },
       });
 
       // Safe stdin write (#8)
@@ -781,9 +789,56 @@ process.stdin.on('end', () => {
       }, QUERY_HARD_TIMEOUT_MS);
 
       proc.stderr?.on('data', (data: Buffer) => {
-        const text = data.toString('utf-8').trim();
-        if (text) {
-          console.error(`[claude-session:${sessionId}] runner stderr:`, text.slice(0, 500));
+        const text = data.toString('utf-8');
+        for (const line of text.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          if (trimmed.startsWith('{') && trimmed.includes('"__mcp__"')) {
+            try {
+              const mcp = JSON.parse(trimmed);
+              if (mcp.__mcp__ && mcp.type === 'send_message') {
+                const msgId = uuidv4();
+                const ts = new Date().toISOString();
+                messageDb.create({
+                  id: msgId,
+                  sessionId,
+                  userId: '__assistant__',
+                  role: 'assistant',
+                  content: mcp.content,
+                  metadata: { senderName: 'Claude', timestamp: ts, sourceKind: 'mcp_send_message' },
+                });
+                broadcastNewMessage(mcp.chatJid, {
+                  id: msgId,
+                  chat_jid: mcp.chatJid,
+                  sender: '__assistant__',
+                  sender_name: 'Claude',
+                  content: mcp.content,
+                  timestamp: ts,
+                  is_from_me: true,
+                  sdk_message_uuid: null,
+                  source_kind: 'mcp_send_message',
+                });
+              } else if (mcp.__mcp__ && mcp.type === 'schedule_task') {
+                const taskId = uuidv4();
+                taskDb.create({
+                  id: taskId,
+                  name: mcp.name,
+                  description: '',
+                  cron: mcp.cron,
+                  prompt: mcp.prompt,
+                  groupId: mcp.chatJid,
+                  enabled: true,
+                });
+                console.log(`[claude-session:${sessionId}] scheduled task via MCP`, taskId);
+              }
+            } catch (e) {
+              console.error(`[claude-session:${sessionId}] failed to parse MCP stderr line:`, trimmed.slice(0, 200));
+            }
+            continue;
+          }
+
+          console.error(`[claude-session:${sessionId}] runner stderr:`, trimmed.slice(0, 500));
         }
       });
 

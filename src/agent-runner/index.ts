@@ -6,6 +6,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import fs from 'fs';
 import path from 'path';
+import { buildClawMcpServer } from '../services/claw-mcp-server.js';
 
 interface RunnerInput {
   prompt: string;
@@ -13,6 +14,14 @@ interface RunnerInput {
   ipcDir?: string;
   allowedTools?: string[];
   disallowedTools?: string[];
+  mcpEnv?: {
+    userId: string;
+    chatJid: string;
+    workspaceDir: string;
+    userGlobalPath?: string;
+    email?: string;
+    groupConfig?: any;
+  };
 }
 
 async function readStdin(): Promise<string> {
@@ -46,6 +55,23 @@ async function main() {
   const sessionId = String((input.options as any)?.resume || 'unknown');
   const logError = (...args: any[]) => console.error(`[runner:${sessionId}]`, ...args);
 
+  // Inject in-process claw MCP server when mcpEnv is provided
+  if (input.mcpEnv) {
+    const env = {
+      userId: input.mcpEnv.userId,
+      email: input.mcpEnv.email || '',
+      chatJid: input.mcpEnv.chatJid,
+      workspaceDir: input.mcpEnv.workspaceDir,
+      userGlobalPath: input.mcpEnv.userGlobalPath,
+      groupConfig: input.mcpEnv.groupConfig || {},
+    };
+    const clawMcp = buildClawMcpServer(env);
+    input.options.mcpServers = {
+      ...(input.options.mcpServers || {}),
+      ...clawMcp,
+    };
+  }
+
   // Rebuild canUseTool in the child process so allowed/disallowed tools still work
   if (input.allowedTools?.length || input.disallowedTools?.length) {
     const allowed = input.allowedTools || [];
@@ -69,8 +95,6 @@ async function main() {
     (input.options as any).allowDangerouslySkipPermissions = false;
   }
 
-  const stream = query({ prompt: input.prompt, options: input.options });
-
   // IPC mid-query injection
   let ipcWatcher: ReturnType<typeof fs.watch> | null = null;
   let ipcFallback: ReturnType<typeof setTimeout> | null = null;
@@ -78,6 +102,7 @@ async function main() {
   let ipcFallbackDelay = 1000;
   const MAX_IPC_DELAY = 5000;
   const ipcDir = input.ipcDir;
+  let currentStream: any = null;
 
   function closeIpcWatcher() {
     ipcWatcherClosed = true;
@@ -99,7 +124,7 @@ async function main() {
         try { parsed = JSON.parse(raw); } catch { /* ignore */ }
         const text = parsed.text?.trim();
         if (text) {
-          (stream as any).streamInput(singleTextMessage(text)).catch((e: unknown) => {
+          currentStream?.streamInput(singleTextMessage(text)).catch((e: unknown) => {
             logError('streamInput error:', e);
           });
         }
@@ -153,17 +178,57 @@ async function main() {
     process.exit(0);
   });
 
-  try {
-    for await (const msg of stream) {
-      console.log(JSON.stringify(msg));
+  // Runner-side retry loop for contextOverflow self-healing
+  const MAX_RUNNER_RETRIES = 3;
+  let runnerAttempt = 1;
+  let capturedSessionId: string | undefined;
+  let streamExhausted = false;
+
+  while (runnerAttempt <= MAX_RUNNER_RETRIES && !streamExhausted) {
+    let streamError: string | null = null;
+    let isContextOverflow = false;
+
+    const attemptOptions: any = { ...input.options };
+    if (capturedSessionId) {
+      attemptOptions.resume = capturedSessionId;
+      delete attemptOptions.resumeSessionAt;
     }
-  } catch (err) {
-    // Emit error as a special line so parent can distinguish
-    console.log(JSON.stringify({ type: 'error', error: String(err), __runner_error__: true }));
-  } finally {
-    closeIpcWatcher();
+
+    const stream = query({ prompt: input.prompt, options: attemptOptions });
+    currentStream = stream;
+
+    try {
+      for await (const msg of stream) {
+        if (msg.type === 'system' && msg.subtype === 'init' && msg.session_id) {
+          capturedSessionId = msg.session_id;
+        }
+        console.log(JSON.stringify(msg));
+      }
+      streamExhausted = true;
+      break;
+    } catch (err) {
+      const errStr = String(err);
+      streamError = errStr;
+      if (errStr.toLowerCase().includes('contextoverflow') || errStr.toLowerCase().includes('context overflow')) {
+        isContextOverflow = true;
+        logError(`contextOverflow on attempt ${runnerAttempt}, capturedSessionId=${capturedSessionId}`);
+      } else {
+        logError(`fatal stream error on attempt ${runnerAttempt}:`, errStr);
+      }
+    }
+
+    if (isContextOverflow && runnerAttempt < MAX_RUNNER_RETRIES && capturedSessionId) {
+      runnerAttempt++;
+      continue;
+    }
+
+    if (streamError) {
+      console.log(JSON.stringify({ type: 'error', error: streamError, __runner_error__: true }));
+    }
+    break;
   }
 
+  closeIpcWatcher();
   console.log('__CLAW_END__');
 }
 

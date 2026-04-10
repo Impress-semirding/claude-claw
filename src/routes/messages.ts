@@ -21,6 +21,7 @@ import { ClaudeAgent, AgentEnvironment } from '../services/agent.js';
 
 // Track running queries per group to broadcast runner_state
 const runningQueries = new Map<string, boolean>();
+const autoContinueCounts = new Map<string, number>();
 
 interface SendMessageResult {
   ok: true;
@@ -111,6 +112,10 @@ async function handleMessageSend(
     userGlobalPath,
     groupConfig,
   };
+
+  // Reset auto-continue counter for user-initiated messages
+  const queryKey = agentId ? `${chatJid}:${agentId}` : chatJid;
+  autoContinueCounts.delete(queryKey);
 
   // Fire-and-forget the agent query
   runAgentQuery(agent, env, session.sessionId, content, enabledMcpServers, chatJid, agentId);
@@ -267,18 +272,37 @@ async function runAgentQuery(
     broadcastRunnerState(chatJid, 'idle', agentId);
     broadcastTyping(chatJid, false, agentId);
 
-    // Trigger memory flush after compaction (non-blocking)
     if (result?.hadCompaction) {
-      console.log('[messages] compaction happened, triggering memory flush');
-      agent.buildSystemPrompt(env).then((systemPrompt) => {
-        runMemoryFlush(env.userId, chatJid, sessionId, mcpServers, systemPrompt).catch((err) => {
-          console.error('[messages] memory flush error:', err);
-        });
-      }).catch((err) => {
-        console.error('[messages] buildSystemPrompt for flush error:', err);
-      });
+      console.log('[messages] compaction happened, triggering memory flush then auto-continue');
+      try {
+        const systemPrompt = await agent.buildSystemPrompt(env);
+        await runMemoryFlush(env.userId, chatJid, sessionId, mcpServers, systemPrompt);
+        await maybeAutoContinue(agent, env, sessionId, mcpServers, chatJid, agentId);
+      } catch (err) {
+        console.error('[messages] auto-continue chain error:', err);
+      }
     }
   }
+}
+
+async function maybeAutoContinue(
+  agent: ClaudeAgent,
+  env: AgentEnvironment,
+  sessionId: string,
+  mcpServers: Record<string, unknown>,
+  chatJid: string,
+  agentId?: string
+): Promise<void> {
+  const key = agentId ? `${chatJid}:${agentId}` : chatJid;
+  const count = autoContinueCounts.get(key) || 0;
+  if (count >= 3) {
+    console.log('[messages] auto-continue limit reached for', key);
+    autoContinueCounts.delete(key);
+    return;
+  }
+  autoContinueCounts.set(key, count + 1);
+  console.log('[messages] auto-continue triggered', key, count + 1);
+  await runAgentQuery(agent, env, sessionId, '继续', mcpServers, chatJid, agentId);
 }
 
 /**
