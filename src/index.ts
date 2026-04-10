@@ -17,8 +17,10 @@ import { initSchema } from './db.js';
 // Import services
 import { initAdminUser } from './services/auth.service.js';
 import { loadSessionsFromDb, cleanupIdleSessions } from './services/claude-session.service.js';
+import { startProcessWatchdog } from './services/process-registry.js';
 import { runDailySummaryIfNeeded } from './daily-summary.js';
 import { ensurePredefinedAgentsForAllGroups } from './services/agent-presets.js';
+import { startSchedulerLoop, initializeTaskSchedules } from './services/task-scheduler.js';
 
 // Import routes
 import authRoutes, { authMiddleware, adminMiddleware } from './routes/auth.js';
@@ -97,6 +99,10 @@ async function init() {
     // Ensure predefined sub-agents for all existing groups
     ensurePredefinedAgentsForAllGroups();
 
+    // Initialize task schedules and start scheduler
+    initializeTaskSchedules();
+    startSchedulerLoop();
+
     // Start cleanup interval
     setInterval(() => {
       const cleaned = cleanupIdleSessions();
@@ -104,6 +110,9 @@ async function init() {
         console.log(`Cleaned up ${cleaned} idle sessions`);
       }
     }, 60000); // Every minute
+
+    // Start runner process watchdog
+    startProcessWatchdog();
 
     // Daily heartbeat summary (runs within 2:00–3:00 AM window, throttled to once per 55min)
     setInterval(() => {

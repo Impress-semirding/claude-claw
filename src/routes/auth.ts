@@ -151,6 +151,11 @@ export async function adminMiddleware(request: FastifyRequest, reply: FastifyRep
   }
 }
 
+function resolveGroupJid(jid: string): string {
+  const match = jid.match(/^(.+)#agent:(.+)$/);
+  return match ? match[1] : jid;
+}
+
 // Group access middleware - validates the user is a member/owner of the group in :jid
 export async function groupAccessMiddleware(request: FastifyRequest, reply: FastifyReply) {
   const user = request.user as IAuthToken;
@@ -161,7 +166,8 @@ export async function groupAccessMiddleware(request: FastifyRequest, reply: Fast
     return;
   }
 
-  const group = groupDb.findById(jid);
+  const groupJid = resolveGroupJid(jid);
+  const group = groupDb.findById(groupJid);
   if (!group) {
     reply.status(404).send({ success: false, error: 'Group not found' });
     return;
@@ -191,7 +197,8 @@ export async function groupOwnerMiddleware(request: FastifyRequest, reply: Fasti
     return;
   }
 
-  const group = groupDb.findById(jid);
+  const groupJid = resolveGroupJid(jid);
+  const group = groupDb.findById(groupJid);
   if (!group) {
     reply.status(404).send({ success: false, error: 'Group not found' });
     return;

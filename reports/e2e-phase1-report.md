@@ -1,6 +1,6 @@
 # Playwright Phase 1 E2E 测试报告
 
-生成时间: 2026-04-09T16:32:46.634Z
+生成时间: 2026-04-10T00:37:59.255Z
 测试地址: http://localhost:5173
 API 地址: http://localhost:3000
 

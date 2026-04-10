@@ -7,12 +7,27 @@
  */
 
 import { tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
-import { appendFileSync, mkdirSync, readdirSync, readFileSync, existsSync } from 'fs';
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, existsSync, statSync } from 'fs';
 import { resolve, join } from 'path';
 import type { AgentEnvironment } from './agent.js';
+import { taskDb } from '../db.js';
+import { installSkillForUser } from '../routes/skills.js';
 
 export interface ClawMcpServerTools {
-  claw: any;
+  claw: unknown;
+}
+
+const MAX_MEMORY_APPEND_SIZE = 1024 * 1024; // 1 MB
+const MAX_MEMORY_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+
+function resolveMemoryPath(baseDir: string, requestedPath: string): string | null {
+  const normalizedRequest = requestedPath.replace(/\\/g, '/').replace(/^\/+/, '');
+  const target = resolve(join(baseDir, normalizedRequest));
+  const allowedBase = resolve(baseDir);
+  if (!target.startsWith(allowedBase + '/') && target !== allowedBase) {
+    return null;
+  }
+  return target;
 }
 
 export function buildClawMcpServer(env: AgentEnvironment): ClawMcpServerTools {
@@ -40,6 +55,17 @@ export function buildClawMcpServer(env: AgentEnvironment): ClawMcpServerTools {
       const filePath = join(memoryDir, `${today}.md`);
       const timestamp = new Date().toLocaleString('zh-CN');
       const entry = `## ${timestamp}\n\n${args.content}\n\n`;
+
+      if (Buffer.byteLength(entry, 'utf-8') > MAX_MEMORY_APPEND_SIZE) {
+        return { error: 'Append entry exceeds 1 MB limit.' };
+      }
+      if (existsSync(filePath)) {
+        const stats = statSync(filePath);
+        if (stats.size > MAX_MEMORY_FILE_SIZE) {
+          return { error: `Memory file ${today}.md exceeds 5 MB limit. Please create a new date file or archive old entries.` };
+        }
+      }
+
       appendFileSync(filePath, entry, 'utf-8');
       return { success: true, file: `memory/${today}.md`, timestamp };
     }
@@ -77,7 +103,10 @@ export function buildClawMcpServer(env: AgentEnvironment): ClawMcpServerTools {
 
       for (const file of files) {
         if (results.length >= limit) break;
-        const content = readFileSync(join(memoryDir, file), 'utf-8');
+        const filePath = join(memoryDir, file);
+        const stats = statSync(filePath);
+        if (stats.size > MAX_MEMORY_FILE_SIZE) continue;
+        const content = readFileSync(filePath, 'utf-8');
         if (content.toLowerCase().includes(queryLower)) {
           const lines = content.split('\n');
           const matches: string[] = [];
@@ -109,10 +138,16 @@ export function buildClawMcpServer(env: AgentEnvironment): ClawMcpServerTools {
       required: ['file'],
     } as const,
     async (args: { file: string }) => {
-      const safe = args.file.replace(/\.{2}/g, '').replace(/^\/+/, '');
-      const filePath = resolve(env.workspaceDir, safe);
+      const filePath = resolveMemoryPath(env.workspaceDir, args.file);
+      if (!filePath) {
+        return { error: `Invalid memory file path: ${args.file}` };
+      }
       if (!existsSync(filePath)) {
         return { error: `File not found: ${args.file}` };
+      }
+      const stats = statSync(filePath);
+      if (stats.size > MAX_MEMORY_FILE_SIZE) {
+        return { error: `File too large to retrieve: ${args.file}` };
       }
       const content = readFileSync(filePath, 'utf-8');
       return { file: args.file, content };
@@ -200,10 +235,111 @@ export function buildClawMcpServer(env: AgentEnvironment): ClawMcpServerTools {
     }
   );
 
+  const listTasks = tool(
+    'list_tasks',
+    'List scheduled tasks for the current workspace/group.',
+    {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Max number of tasks to return. Default 20.' },
+      },
+    } as const,
+    async (args: { limit?: number }) => {
+      const all = taskDb.findAll().filter((t) => t.groupId === env.chatJid);
+      const limit = args.limit ?? 20;
+      const tasks = all.slice(0, limit).map((t) => ({
+        id: t.id,
+        name: t.name,
+        cron: t.cron,
+        enabled: t.enabled,
+        executionType: t.executionType,
+        contextMode: t.contextMode,
+        prompt: t.prompt?.slice(0, 200),
+      }));
+      return { tasks, total: all.length };
+    }
+  );
+
+  const pauseTask = tool(
+    'pause_task',
+    'Pause (disable) a scheduled task by ID.',
+    {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'Task ID to pause.' },
+      },
+      required: ['taskId'],
+    } as const,
+    async (args: { taskId: string }) => {
+      const task = taskDb.findById(args.taskId);
+      if (!task) return { success: false, error: 'Task not found' };
+      if (task.groupId !== env.chatJid) return { success: false, error: 'Task does not belong to this workspace' };
+      taskDb.update(args.taskId, { enabled: false });
+      return { success: true };
+    }
+  );
+
+  const resumeTask = tool(
+    'resume_task',
+    'Resume (enable) a scheduled task by ID.',
+    {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'Task ID to resume.' },
+      },
+      required: ['taskId'],
+    } as const,
+    async (args: { taskId: string }) => {
+      const task = taskDb.findById(args.taskId);
+      if (!task) return { success: false, error: 'Task not found' };
+      if (task.groupId !== env.chatJid) return { success: false, error: 'Task does not belong to this workspace' };
+      taskDb.update(args.taskId, { enabled: true });
+      return { success: true };
+    }
+  );
+
+  const cancelTask = tool(
+    'cancel_task',
+    'Cancel (delete) a scheduled task by ID.',
+    {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'Task ID to cancel/delete.' },
+      },
+      required: ['taskId'],
+    } as const,
+    async (args: { taskId: string }) => {
+      const task = taskDb.findById(args.taskId);
+      if (!task) return { success: false, error: 'Task not found' };
+      if (task.groupId !== env.chatJid) return { success: false, error: 'Task does not belong to this workspace' };
+      taskDb.delete(args.taskId);
+      return { success: true };
+    }
+  );
+
+  const installSkill = tool(
+    'install_skill',
+    'Install a skill package from skills.sh or a GitHub repo for the current user.',
+    {
+      type: 'object',
+      properties: {
+        package: {
+          type: 'string',
+          description: 'Package name (e.g. "anthropic-coding/skills") or GitHub URL.',
+        },
+      },
+      required: ['package'],
+    } as const,
+    async (args: { package: string }) => {
+      const result = await installSkillForUser(env.userId, args.package.trim());
+      return result;
+    }
+  );
+
   const server = createSdkMcpServer({
     name: 'claw',
     version: '1.0.0',
-    tools: [memoryAppend, memorySearch, memoryGet, sendMessage, scheduleTask, getCurrentTime],
+    tools: [memoryAppend, memorySearch, memoryGet, sendMessage, scheduleTask, getCurrentTime, listTasks, pauseTask, resumeTask, cancelTask, installSkill],
   });
 
   return { claw: server };

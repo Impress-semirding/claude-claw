@@ -14,6 +14,7 @@ import type {
   IUserSession,
   ISkill,
   IAgent,
+  ISubAgent,
 } from './types.js';
 
 // Initialize database
@@ -24,7 +25,7 @@ const db: Database.Database = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
 // Schema version for migrations
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 7;
 
 // Initialize schema
 export function initSchema() {
@@ -144,6 +145,12 @@ export function initSchema() {
       enabled INTEGER DEFAULT 1,
       last_run_at INTEGER,
       next_run_at INTEGER,
+      execution_type TEXT DEFAULT 'agent' CHECK(execution_type IN ('agent', 'script')),
+      context_mode TEXT DEFAULT 'isolated' CHECK(context_mode IN ('group', 'isolated')),
+      script_command TEXT,
+      workspace_folder TEXT,
+      workspace_jid TEXT,
+      created_by TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     )
@@ -248,6 +255,23 @@ export function initSchema() {
     )
   `);
 
+  // Sub-agents table (conversation agents with virtual JID support)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sub_agents (
+      id TEXT PRIMARY KEY,
+      group_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      prompt TEXT NOT NULL,
+      model TEXT,
+      tools TEXT DEFAULT '[]',
+      is_enabled INTEGER DEFAULT 1,
+      status TEXT DEFAULT 'idle' CHECK(status IN ('idle', 'running', 'completed', 'error')),
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+
   // Group env table
   db.exec(`
     CREATE TABLE IF NOT EXISTS group_env (
@@ -275,6 +299,7 @@ export function initSchema() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_agents_group ON agents(group_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_skills_user ON skills(user_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_sub_agents_group ON sub_agents(group_id)`);
 
   // Run migrations
   runMigrations();
@@ -354,6 +379,78 @@ function runMigrations() {
 
   if (currentVersion < 5) {
     try { db.exec(`ALTER TABLE sessions ADD COLUMN last_assistant_uuid TEXT`); } catch { /* may already exist */ }
+  }
+
+  if (currentVersion < 6) {
+    try { db.exec(`ALTER TABLE tasks ADD COLUMN execution_type TEXT DEFAULT 'agent' CHECK(execution_type IN ('agent', 'script'))`); } catch { /* may already exist */ }
+    try { db.exec(`ALTER TABLE tasks ADD COLUMN context_mode TEXT DEFAULT 'isolated' CHECK(context_mode IN ('group', 'isolated'))`); } catch { /* may already exist */ }
+    try { db.exec(`ALTER TABLE tasks ADD COLUMN script_command TEXT`); } catch { /* may already exist */ }
+    try { db.exec(`ALTER TABLE tasks ADD COLUMN workspace_folder TEXT`); } catch { /* may already exist */ }
+    try { db.exec(`ALTER TABLE tasks ADD COLUMN workspace_jid TEXT`); } catch { /* may already exist */ }
+    try { db.exec(`ALTER TABLE tasks ADD COLUMN created_by TEXT`); } catch { /* may already exist */ }
+  }
+
+  if (currentVersion < 7) {
+    // Migration v7: create sub_agents table for conversation agents
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS sub_agents (
+        id TEXT PRIMARY KEY,
+        group_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        prompt TEXT NOT NULL,
+        model TEXT,
+        tools TEXT DEFAULT '[]',
+        is_enabled INTEGER DEFAULT 1,
+        status TEXT DEFAULT 'idle' CHECK(status IN ('idle', 'running', 'completed', 'error')),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_sub_agents_group ON sub_agents(group_id)`);
+
+    // Migrate existing conversation agents from agents table
+    try {
+      const rows = db.prepare(`SELECT * FROM agents WHERE kind = 'conversation'`).all() as any[];
+      const insert = db.prepare(`
+        INSERT OR IGNORE INTO sub_agents (id, group_id, name, description, prompt, model, tools, is_enabled, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const row of rows) {
+        const { description, tools } = (() => {
+          let description = '';
+          let tools: string[] = [];
+          const match = (row.prompt || '').match(/^---\s*\n([\s\S]*?)\n---/);
+          if (match) {
+            const yaml = match[1];
+            const descMatch = yaml.match(/^description:\s*(.*)$/m);
+            if (descMatch) description = descMatch[1].trim();
+            const toolsMatch = yaml.match(/^tools:\s*\n((?:\s+-\s+.*\n?)+)/m);
+            if (toolsMatch) {
+              tools = toolsMatch[1]
+                .split('\n')
+                .map((l: string) => l.trim())
+                .filter((l: string) => l.startsWith('- '))
+                .map((l: string) => l.replace(/^-\s+/, '').trim());
+            }
+          }
+          return { description, tools };
+        })();
+        insert.run(
+          row.id,
+          row.group_id,
+          row.name,
+          description || null,
+          row.prompt || '',
+          null,
+          JSON.stringify(tools),
+          1,
+          row.status || 'idle',
+          row.created_at || Date.now(),
+          row.updated_at || Date.now()
+        );
+      }
+    } catch { /* ignore migration errors */ }
   }
 
   db.prepare('INSERT OR REPLACE INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
@@ -1039,8 +1136,9 @@ export const taskDb = {
   create(task: Omit<ITask, 'createdAt' | 'updatedAt'>) {
     const now = Date.now();
     const stmt = db.prepare(`
-      INSERT INTO tasks (id, name, description, cron, prompt, group_id, enabled, last_run_at, next_run_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tasks (id, name, description, cron, prompt, group_id, enabled, last_run_at, next_run_at,
+        execution_type, context_mode, script_command, workspace_folder, workspace_jid, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       task.id,
@@ -1052,6 +1150,12 @@ export const taskDb = {
       task.enabled ? 1 : 0,
       task.lastRunAt || null,
       task.nextRunAt || null,
+      task.executionType || 'agent',
+      task.contextMode || 'isolated',
+      task.scriptCommand || null,
+      task.workspaceFolder || null,
+      task.workspaceJid || null,
+      task.createdBy || null,
       now,
       now
     );
@@ -1071,6 +1175,12 @@ export const taskDb = {
       enabled: Boolean(row.enabled),
       lastRunAt: row.last_run_at,
       nextRunAt: row.next_run_at,
+      executionType: row.execution_type as ITask['executionType'],
+      contextMode: row.context_mode as ITask['contextMode'],
+      scriptCommand: row.script_command as string | undefined,
+      workspaceFolder: row.workspace_folder as string | undefined,
+      workspaceJid: row.workspace_jid as string | undefined,
+      createdBy: row.created_by as string | undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     } as ITask;
@@ -1088,6 +1198,12 @@ export const taskDb = {
       enabled: Boolean(row.enabled),
       lastRunAt: row.last_run_at,
       nextRunAt: row.next_run_at,
+      executionType: row.execution_type as ITask['executionType'],
+      contextMode: row.context_mode as ITask['contextMode'],
+      scriptCommand: row.script_command as string | undefined,
+      workspaceFolder: row.workspace_folder as string | undefined,
+      workspaceJid: row.workspace_jid as string | undefined,
+      createdBy: row.created_by as string | undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     })) as ITask[];
@@ -1105,6 +1221,12 @@ export const taskDb = {
       enabled: true,
       lastRunAt: row.last_run_at,
       nextRunAt: row.next_run_at,
+      executionType: row.execution_type as ITask['executionType'],
+      contextMode: row.context_mode as ITask['contextMode'],
+      scriptCommand: row.script_command as string | undefined,
+      workspaceFolder: row.workspace_folder as string | undefined,
+      workspaceJid: row.workspace_jid as string | undefined,
+      createdBy: row.created_by as string | undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     })) as ITask[];
@@ -1120,6 +1242,11 @@ export const taskDb = {
     if (data.enabled !== undefined) updates.enabled = data.enabled ? 1 : 0;
     if (data.lastRunAt !== undefined) updates.last_run_at = data.lastRunAt;
     if (data.nextRunAt !== undefined) updates.next_run_at = data.nextRunAt;
+    if (data.executionType !== undefined) updates.execution_type = data.executionType;
+    if (data.contextMode !== undefined) updates.context_mode = data.contextMode;
+    if (data.scriptCommand !== undefined) updates.script_command = data.scriptCommand;
+    if (data.workspaceFolder !== undefined) updates.workspace_folder = data.workspaceFolder;
+    if (data.workspaceJid !== undefined) updates.workspace_jid = data.workspaceJid;
 
     const fields = Object.keys(updates);
     if (fields.length === 0) return;
@@ -1629,6 +1756,106 @@ export const agentDb = {
 
   delete(id: string) {
     db.prepare('DELETE FROM agents WHERE id = ?').run(id);
+  },
+};
+
+// Sub-agent operations (conversation agents with virtual JID support)
+export const subAgentDb = {
+  create(agent: Omit<ISubAgent, 'createdAt' | 'updatedAt'>) {
+    const now = Date.now();
+    const stmt = db.prepare(`
+      INSERT INTO sub_agents (id, group_id, name, description, prompt, model, tools, is_enabled, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      agent.id,
+      agent.groupId,
+      agent.name,
+      agent.description || null,
+      agent.prompt,
+      agent.model || null,
+      JSON.stringify(agent.tools || []),
+      agent.isEnabled ? 1 : 0,
+      agent.status || 'idle',
+      now,
+      now
+    );
+    return { ...agent, createdAt: now, updatedAt: now };
+  },
+
+  findById(id: string): ISubAgent | undefined {
+    const row = db.prepare('SELECT * FROM sub_agents WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    return {
+      id: row.id as string,
+      groupId: row.group_id as string,
+      name: row.name as string,
+      description: row.description as string | undefined,
+      prompt: row.prompt as string,
+      model: row.model as string | undefined,
+      tools: row.tools ? JSON.parse(row.tools as string) : [],
+      isEnabled: Boolean(row.is_enabled),
+      status: row.status as ISubAgent['status'],
+      createdAt: row.created_at as number,
+      updatedAt: row.updated_at as number,
+    } as ISubAgent;
+  },
+
+  findByGroup(groupId: string): ISubAgent[] {
+    const rows = db.prepare('SELECT * FROM sub_agents WHERE group_id = ?').all(groupId) as Record<string, unknown>[];
+    return rows.map((row) => ({
+      id: row.id as string,
+      groupId: row.group_id as string,
+      name: row.name as string,
+      description: row.description as string | undefined,
+      prompt: row.prompt as string,
+      model: row.model as string | undefined,
+      tools: row.tools ? JSON.parse(row.tools as string) : [],
+      isEnabled: Boolean(row.is_enabled),
+      status: row.status as ISubAgent['status'],
+      createdAt: row.created_at as number,
+      updatedAt: row.updated_at as number,
+    })) as ISubAgent[];
+  },
+
+  findAll(): ISubAgent[] {
+    const rows = db.prepare('SELECT * FROM sub_agents').all() as Record<string, unknown>[];
+    return rows.map((row) => ({
+      id: row.id as string,
+      groupId: row.group_id as string,
+      name: row.name as string,
+      description: row.description as string | undefined,
+      prompt: row.prompt as string,
+      model: row.model as string | undefined,
+      tools: row.tools ? JSON.parse(row.tools as string) : [],
+      isEnabled: Boolean(row.is_enabled),
+      status: row.status as ISubAgent['status'],
+      createdAt: row.created_at as number,
+      updatedAt: row.updated_at as number,
+    })) as ISubAgent[];
+  },
+
+  update(id: string, data: Partial<ISubAgent>) {
+    const updates: Record<string, unknown> = {};
+    if (data.name !== undefined) updates.name = data.name;
+    if (data.description !== undefined) updates.description = data.description;
+    if (data.prompt !== undefined) updates.prompt = data.prompt;
+    if (data.model !== undefined) updates.model = data.model;
+    if (data.tools !== undefined) updates.tools = JSON.stringify(data.tools);
+    if (data.isEnabled !== undefined) updates.is_enabled = data.isEnabled ? 1 : 0;
+    if (data.status !== undefined) updates.status = data.status;
+
+    const fields = Object.keys(updates);
+    if (fields.length === 0) return;
+
+    const setClause = fields.map((f) => `${f} = ?`).join(', ');
+    const values = fields.map((f) => updates[f]);
+    const stmt = db.prepare(`UPDATE sub_agents SET ${setClause}, updated_at = ? WHERE id = ?`);
+    stmt.run(...values, Date.now(), id);
+  },
+
+  delete(id: string) {
+    db.prepare('DELETE FROM sub_agents WHERE id = ?').run(id);
   },
 };
 

@@ -22,11 +22,20 @@ import { ClaudeAgent, AgentEnvironment } from '../services/agent.js';
 // Track running queries per group to broadcast runner_state
 const runningQueries = new Map<string, boolean>();
 const autoContinueCounts = new Map<string, number>();
+const autoContinueLastEmpty = new Map<string, boolean>();
 
 interface SendMessageResult {
   ok: true;
   messageId: string;
   timestamp: string;
+}
+
+function parseVirtualJid(chatJid: string): { groupJid: string; agentId?: string } {
+  const match = chatJid.match(/^(.+)#agent:(.+)$/);
+  if (match) {
+    return { groupJid: match[1], agentId: match[2] };
+  }
+  return { groupJid: chatJid };
 }
 
 async function handleMessageSend(
@@ -35,10 +44,14 @@ async function handleMessageSend(
   chatJid: string,
   content: string,
   attachments?: unknown[],
-  agentId?: string
+  explicitAgentId?: string
 ): Promise<SendMessageResult | { ok: false; error: string; status: number }> {
+  // Parse virtual JID: {groupJid}#agent:{agentId}
+  const { groupJid, agentId: virtualAgentId } = parseVirtualJid(chatJid);
+  const agentId = explicitAgentId || virtualAgentId;
+
   // Check group
-  const group = groupDb.findById(chatJid);
+  const group = groupDb.findById(groupJid);
   if (!group) {
     return { ok: false, error: 'Group not found', status: 404 };
   }
@@ -48,8 +61,8 @@ async function handleMessageSend(
     return { ok: false, error: 'Forbidden', status: 403 };
   }
 
-  // Get or create session for this group (scoped by agentId)
-  const session = await getOrCreateSession(userId, chatJid, undefined, agentId);
+  // Get or create session for this group (scoped by agentId), using actual groupJid as workspace
+  const session = await getOrCreateSession(userId, groupJid, undefined, agentId);
 
   const messageId = randomUUID();
   const timestamp = new Date().toISOString();
@@ -61,9 +74,9 @@ async function handleMessageSend(
     timestamp,
     agentId,
   });
-  console.log('[messages] saved user message', { messageId, sessionId: session.sessionId, chatJid, agentId });
+  console.log('[messages] saved user message', { messageId, sessionId: session.sessionId, chatJid, agentId, groupJid });
 
-  // Broadcast new_message immediately
+  // Broadcast new_message immediately (use original chatJid so virtual JID tabs receive it)
   const userMsgPayload = {
     id: messageId,
     chat_jid: chatJid,
@@ -99,7 +112,7 @@ async function handleMessageSend(
   }
 
   // Resolve agent and build environment
-  const agent = resolveAgent(chatJid, agentId);
+  const agent = resolveAgent(groupJid, agentId);
   const groupConfig = group.config || {};
   const workspaceDir = resolve(appConfig.claude.baseDir, group.folder || '');
   const userGlobalPath = resolve(appConfig.dataDir, 'groups', 'user-global', userId, 'CLAUDE.md');
@@ -107,23 +120,23 @@ async function handleMessageSend(
   const env: AgentEnvironment = {
     userId,
     email: displayName,
-    chatJid,
+    chatJid: groupJid,
     workspaceDir,
     userGlobalPath,
     groupConfig,
   };
 
   // Reset auto-continue counter for user-initiated messages
-  const queryKey = agentId ? `${chatJid}:${agentId}` : chatJid;
+  const queryKey = agentId ? `${groupJid}:${agentId}` : groupJid;
   autoContinueCounts.delete(queryKey);
 
-  // Fire-and-forget the agent query
+  // Fire-and-forget the agent query (broadcast with original chatJid for virtual JID routing)
   runAgentQuery(agent, env, session.sessionId, content, enabledMcpServers, chatJid, agentId);
 
   return { ok: true, messageId, timestamp };
 }
 
-async function runAgentQuery(
+export async function runAgentQuery(
   agent: ClaudeAgent,
   env: AgentEnvironment,
   sessionId: string,
@@ -131,7 +144,7 @@ async function runAgentQuery(
   mcpServers: Record<string, unknown>,
   chatJid: string,
   agentId?: string
-): Promise<void> {
+): Promise<import('../services/agent.js').AgentQueryResult | undefined> {
   const queryKey = agentId ? `${chatJid}:${agentId}` : chatJid;
   if (runningQueries.get(queryKey)) {
     return;
@@ -283,6 +296,7 @@ async function runAgentQuery(
       }
     }
   }
+  return result;
 }
 
 async function maybeAutoContinue(
@@ -298,11 +312,29 @@ async function maybeAutoContinue(
   if (count >= 3) {
     console.log('[messages] auto-continue limit reached for', key);
     autoContinueCounts.delete(key);
+    autoContinueLastEmpty.delete(key);
+    return;
+  }
+  if (autoContinueLastEmpty.get(key)) {
+    console.log('[messages] last auto-continue produced no text, stopping chain', key);
+    autoContinueCounts.delete(key);
+    autoContinueLastEmpty.delete(key);
     return;
   }
   autoContinueCounts.set(key, count + 1);
   console.log('[messages] auto-continue triggered', key, count + 1);
-  await runAgentQuery(agent, env, sessionId, '继续', mcpServers, chatJid, agentId);
+
+  broadcastStreamEvent(chatJid, {
+    eventType: 'status',
+    statusText: '上下文已压缩，Agent 正在自动继续…',
+    turnId: `turn-${Date.now()}`,
+  }, agentId);
+  broadcastTyping(chatJid, true, agentId);
+
+  const result = await runAgentQuery(agent, env, sessionId, '继续', mcpServers, chatJid, agentId);
+  if (!result?.assistantText.trim()) {
+    autoContinueLastEmpty.set(key, true);
+  }
 }
 
 /**

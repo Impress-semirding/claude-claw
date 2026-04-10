@@ -103,3 +103,28 @@ export function countActive(): number {
   }
   return count;
 }
+
+const WATCHDOG_INTERVAL_MS = 60_000; // every 60s
+const MAX_RUNNER_LIFETIME_MS = 15 * 60 * 1000; // 15 minutes
+
+export function startProcessWatchdog(): void {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [processId, tracked] of registry) {
+      if (tracked.proc.killed) {
+        registry.delete(processId);
+        continue;
+      }
+      const elapsed = now - tracked.startedAt;
+      if (elapsed > MAX_RUNNER_LIFETIME_MS) {
+        console.warn(`[process-registry] watchdog killing long-running runner ${processId}, elapsed=${elapsed}ms`);
+        try {
+          tracked.proc.kill('SIGKILL');
+        } catch (e) {
+          console.error('[process-registry] failed to kill runner', processId, e);
+        }
+        registry.delete(processId);
+      }
+    }
+  }, WATCHDOG_INTERVAL_MS);
+}

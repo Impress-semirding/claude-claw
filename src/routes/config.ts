@@ -4,6 +4,7 @@ import { appConfig } from '../config.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve } from 'path';
 import { randomUUID } from 'crypto';
+import { getProviderHealth, resetProviderHealth } from '../services/provider-pool.js';
 
 const CONFIG_DIR = resolve(appConfig.dataDir, 'config');
 mkdirSync(CONFIG_DIR, { recursive: true });
@@ -121,23 +122,6 @@ function buildProviderPublic(p: ProviderRecord): any {
     ...p,
     health: null,
   };
-}
-
-const healthStates = new Map<string, any>();
-
-function getHealth(profileId: string) {
-  if (!healthStates.has(profileId)) {
-    healthStates.set(profileId, {
-      profileId,
-      healthy: true,
-      consecutiveErrors: 0,
-      lastErrorAt: null,
-      lastSuccessAt: Date.now(),
-      unhealthySince: null,
-      activeSessionCount: 0,
-    });
-  }
-  return healthStates.get(profileId);
 }
 
 // ─── Config routes ─────────────────────────────────────────────
@@ -260,7 +244,7 @@ export default async function configRoutes(fastify: FastifyInstance) {
       const balancing = readConfig('claude-balancing', getDefaultBalancing());
       const enabledCount = providers.filter((p) => p.enabled).length;
       return reply.send({
-        providers: providers.map((p) => ({ ...buildProviderPublic(p), health: getHealth(p.id) })),
+        providers: providers.map((p) => ({ ...buildProviderPublic(p), health: getProviderHealth(p.id) })),
         balancing,
         enabledCount,
       });
@@ -329,7 +313,7 @@ export default async function configRoutes(fastify: FastifyInstance) {
 
       writeProviders(providers);
       writeSecrets(secrets);
-      getHealth(id); // init health
+      getProviderHealth(id); // init health
 
       return reply.status(201).send({ success: true, id });
     } catch (error) {
@@ -374,7 +358,6 @@ export default async function configRoutes(fastify: FastifyInstance) {
       delete secrets[id];
       writeProviders(providers);
       writeSecrets(secrets);
-      healthStates.delete(id);
       return reply.send({ success: true });
     } catch (error) {
       return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to delete provider' });
@@ -401,15 +384,7 @@ export default async function configRoutes(fastify: FastifyInstance) {
   fastify.post('/claude/providers/:id/reset-health', { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {
     try {
       const id = (request.params as any).id as string;
-      healthStates.set(id, {
-        profileId: id,
-        healthy: true,
-        consecutiveErrors: 0,
-        lastErrorAt: null,
-        lastSuccessAt: Date.now(),
-        unhealthySince: null,
-        activeSessionCount: 0,
-      });
+      resetProviderHealth(id);
       return reply.send({ success: true });
     } catch (error) {
       return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to reset health' });
@@ -498,7 +473,7 @@ export default async function configRoutes(fastify: FastifyInstance) {
     try {
       const providers = readProviders();
       return reply.send({
-        statuses: providers.map((p) => getHealth(p.id)),
+        statuses: providers.map((p) => ({ providerId: p.id, ...getProviderHealth(p.id) })),
       });
     } catch (error) {
       return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to load health' });

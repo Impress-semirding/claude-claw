@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, existsSync, copyFileSync, readdirSync, readFileSync, cpSync } from 'fs';
+import { mkdirSync, rmSync, existsSync, copyFileSync, readdirSync, cpSync, writeFileSync } from 'fs';
 import { resolve, join } from 'path';
 import { spawn } from 'child_process';
 import { createInterface } from 'readline';
@@ -10,7 +10,6 @@ import { broadcastNewMessage } from './ws.service.js';
 import { getIsolator } from './workspace-isolator/factory.js';
 import * as processRegistry from './process-registry.js';
 import { ClawStreamProcessor } from './stream-processor.js';
-import { readFileCached, setCachedFile } from '../utils/file-cache.js';
 import {
   categorizeError,
   calculateRetryDelay,
@@ -18,67 +17,8 @@ import {
   extractRetryAfterMs,
 } from './retry.js';
 import { agentPool } from './agent-pool.js';
+import { providerPool } from './provider-pool.js';
 import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
-
-interface ProviderRecord {
-  id: string;
-  enabled: boolean;
-  anthropicBaseUrl: string;
-  anthropicModel: string;
-}
-
-interface ProviderSecretRecord {
-  anthropicAuthToken?: string | null;
-  anthropicApiKey?: string | null;
-}
-
-function readProviders(): ProviderRecord[] {
-  const p = resolve(appConfig.dataDir, 'config', 'claude-providers.json');
-  if (!existsSync(p)) return [];
-  const cached = readFileCached(p, 5000);
-  if (cached !== null) {
-    try {
-      return JSON.parse(cached) as ProviderRecord[];
-    } catch {
-      return [];
-    }
-  }
-  try {
-    const content = readFileSync(p, 'utf-8');
-    setCachedFile(p, content);
-    return JSON.parse(content) as ProviderRecord[];
-  } catch {
-    return [];
-  }
-}
-
-function readSecrets(): Record<string, ProviderSecretRecord> {
-  const p = resolve(appConfig.dataDir, 'config', 'claude-secrets.json');
-  if (!existsSync(p)) return {};
-  const cached = readFileCached(p, 5000);
-  if (cached !== null) {
-    try {
-      return JSON.parse(cached) as Record<string, ProviderSecretRecord>;
-    } catch {
-      return {};
-    }
-  }
-  try {
-    const content = readFileSync(p, 'utf-8');
-    setCachedFile(p, content);
-    return JSON.parse(content) as Record<string, ProviderSecretRecord>;
-  } catch {
-    return {};
-  }
-}
-
-function getActiveProvider(): { provider?: ProviderRecord; secret?: ProviderSecretRecord } {
-  const providers = readProviders();
-  const active = providers.find((p) => p.enabled) || providers[0];
-  if (!active) return {};
-  const secrets = readSecrets();
-  return { provider: active, secret: secrets[active.id] };
-}
 
 const COMPACT_MESSAGE_THRESHOLD = appConfig.claude.compactThreshold || 50;
 
@@ -336,9 +276,25 @@ export function abortQuery(userId: string, workspace: string, sessionId: string)
   }
 
   session.abortController.abort();
-  // In child-process architecture, aborting the signal alone may not unblock
-  // the stdout reader immediately. Send SIGTERM to the runner for instant cancel.
-  agentPool.kill(sessionId, 'SIGTERM');
+
+  // Graceful interrupt via sentinel: runner will call stream.interrupt() instead of hard kill
+  const ipcInputDir = resolve(appConfig.dataDir, 'ipc', sessionId, 'input');
+  try {
+    mkdirSync(ipcInputDir, { recursive: true });
+    writeFileSync(resolve(ipcInputDir, '_interrupt'), JSON.stringify({ timestamp: Date.now() }), 'utf-8');
+  } catch (err) {
+    console.error(`[claude-session:${sessionId}] failed to write interrupt sentinel:`, err);
+  }
+
+  // Fallback hard-kill after a short grace period if the runner doesn't exit on its own
+  setTimeout(() => {
+    const stillActive = agentPool.getProcess(sessionId);
+    if (stillActive && !stillActive.killed) {
+      console.log(`[claude-session:${sessionId}] interrupt grace period expired, sending SIGTERM`);
+      agentPool.kill(sessionId, 'SIGTERM');
+    }
+  }, 3000);
+
   session.status = 'idle';
   sessionDb.update(sessionId, { status: 'idle' });
 
@@ -461,10 +417,14 @@ export async function* querySession({
   const abortController = new AbortController();
   session.abortController = abortController;
 
-  // Read active provider configuration
-  const { provider: activeProvider, secret: activeSecret } = getActiveProvider();
-  let baseUrl = activeProvider?.anthropicBaseUrl || appConfig.claude.baseUrl;
-  const model = activeProvider?.anthropicModel || appConfig.claude.model || 'claude-sonnet-4-20250514';
+  // Select provider from the pool
+  const selected = providerPool.selectProvider();
+  const selectedProvider = selected?.provider;
+  const selectedSecret = selected?.secret;
+  const selectedProviderId = selectedProvider?.id;
+
+  let baseUrl = selectedProvider?.anthropicBaseUrl || appConfig.claude.baseUrl;
+  const model = selectedProvider?.anthropicModel || appConfig.claude.model || 'claude-sonnet-4-20250514';
 
   // The claude-agent-sdk appends /v1 to the base URL internally.
   // If the provider baseUrl already ends with /v1 (e.g. Kimi's https://api.kimi.com/coding/v1),
@@ -473,7 +433,7 @@ export async function* querySession({
     baseUrl = baseUrl.slice(0, -3);
   }
 
-  console.log('[claude-session] querySession start', { sessionId, baseUrl, model, hasAuth: !!(activeSecret?.anthropicAuthToken || activeSecret?.anthropicApiKey) });
+  console.log('[claude-session] querySession start', { sessionId, providerId: selectedProviderId, baseUrl, model, hasAuth: !!(selectedSecret?.anthropicAuthToken || selectedSecret?.anthropicApiKey) });
 
   // Prepare isolated workspace
   const isolator = getIsolator();
@@ -491,12 +451,19 @@ export async function* querySession({
   };
 
   // Pass authentication from provider secrets
-  if (activeSecret?.anthropicAuthToken) {
-    env.ANTHROPIC_API_KEY = activeSecret.anthropicAuthToken;
-    env.ANTHROPIC_AUTH_TOKEN = activeSecret.anthropicAuthToken;
+  if (selectedSecret?.anthropicAuthToken) {
+    env.ANTHROPIC_API_KEY = selectedSecret.anthropicAuthToken;
+    env.ANTHROPIC_AUTH_TOKEN = selectedSecret.anthropicAuthToken;
   }
-  if (activeSecret?.anthropicApiKey) {
-    env.ANTHROPIC_API_KEY = activeSecret.anthropicApiKey;
+  if (selectedSecret?.anthropicApiKey) {
+    env.ANTHROPIC_API_KEY = selectedSecret.anthropicApiKey;
+  }
+
+  // Pass provider custom env
+  if (selectedProvider?.customEnv) {
+    for (const [k, v] of Object.entries(selectedProvider.customEnv)) {
+      env[k] = v;
+    }
   }
 
   // Build system prompt: use claude_code preset with custom content appended.
@@ -788,9 +755,13 @@ process.stdin.on('end', () => {
         try { proc!.kill('SIGKILL'); } catch {}
       }, QUERY_HARD_TIMEOUT_MS);
 
+      let stderrBuffer = '';
       proc.stderr?.on('data', (data: Buffer) => {
-        const text = data.toString('utf-8');
-        for (const line of text.split('\n')) {
+        stderrBuffer += data.toString('utf-8');
+        let newlineIndex: number;
+        while ((newlineIndex = stderrBuffer.indexOf('\n')) !== -1) {
+          const line = stderrBuffer.slice(0, newlineIndex);
+          stderrBuffer = stderrBuffer.slice(newlineIndex + 1);
           const trimmed = line.trim();
           if (!trimmed) continue;
 
@@ -956,6 +927,9 @@ process.stdin.on('end', () => {
       session.status = 'idle';
       sessionDb.update(sessionId, { status: 'idle' });
       streamConsumed = true;
+      if (selectedProviderId) {
+        providerPool.reportSuccess(selectedProviderId);
+      }
       break; // Success
     } catch (err) {
       const category = categorizeError(err);
@@ -998,6 +972,9 @@ process.stdin.on('end', () => {
     const errorMsg = lastError?.message || 'Claude query failed';
     console.error(`[claude-session:${sessionId}] querySession exhausted retries`, errorMsg);
     yield { type: 'error', error: errorMsg, timestamp: Date.now() };
+    if (selectedProviderId) {
+      providerPool.reportError(selectedProviderId);
+    }
   }
 
   // Clean up abort controller, IPC directory and release pool slot

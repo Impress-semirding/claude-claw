@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { agentDb, groupDb } from '../db.js';
+import { subAgentDb, groupDb } from '../db.js';
 import { ClaudeAgent } from './agent.js';
 
 const CODE_REVIEWER_PROMPT = `---
@@ -49,6 +49,30 @@ tools:
 - 语言简洁、条理清晰，优先使用 bullet points 和表格。
 `;
 
+const DOCUMENT_WRITER_PROMPT = `---
+description: 文档撰写专家，编写技术文档、README 和 API 文档
+tools:
+  - Read
+  - Write
+  - Edit
+  - Glob
+---
+
+你是一位技术文档专家。擅长编写清晰、结构化的技术文档。
+
+**工作方式**
+1. 分析用户需求，确定文档类型（README、API 文档、使用指南等）。
+2. 收集现有代码和接口信息作为素材。
+3. 组织文档结构，包含目录、示例和最佳实践说明。
+
+**输出要求**
+- 使用 Markdown 格式。
+- 包含明确的层级标题。
+- 提供可运行的代码示例。
+- 列出关键配置和注意事项。
+- 语言简洁、专业。
+`;
+
 export const MAIN_AGENT = new ClaudeAgent({ id: 'main', name: 'main' });
 
 export const CODE_REVIEWER_AGENT = new ClaudeAgent({
@@ -65,9 +89,17 @@ export const WEB_RESEARCHER_AGENT = new ClaudeAgent({
   allowedTools: ['WebSearch', 'WebFetch', 'Read', 'Write'],
 });
 
+export const DOCUMENT_WRITER_AGENT = new ClaudeAgent({
+  id: 'document-writer',
+  name: 'document-writer',
+  prompt: DOCUMENT_WRITER_PROMPT,
+  allowedTools: ['Read', 'Write', 'Edit', 'Glob'],
+});
+
 const PREDEFINED_AGENT_MAP = new Map<string, ClaudeAgent>([
   ['code-reviewer', CODE_REVIEWER_AGENT],
   ['web-researcher', WEB_RESEARCHER_AGENT],
+  ['document-writer', DOCUMENT_WRITER_AGENT],
 ]);
 
 export const PREDEFINED_AGENTS = [
@@ -79,6 +111,11 @@ export const PREDEFINED_AGENTS = [
   {
     name: 'web-researcher',
     prompt: WEB_RESEARCHER_PROMPT,
+    kind: 'conversation' as const,
+  },
+  {
+    name: 'document-writer',
+    prompt: DOCUMENT_WRITER_PROMPT,
     kind: 'conversation' as const,
   },
 ] as const;
@@ -93,7 +130,7 @@ export function resolveAgent(_groupId: string, agentId?: string): ClaudeAgent {
     return MAIN_AGENT;
   }
 
-  const dbAgent = agentDb.findById(agentId);
+  const dbAgent = subAgentDb.findById(agentId);
   if (!dbAgent) {
     return MAIN_AGENT;
   }
@@ -124,19 +161,22 @@ export function resolveAgent(_groupId: string, agentId?: string): ClaudeAgent {
  */
 export function ensurePredefinedAgents(groupId: string): void {
   const existingNames = new Set(
-    agentDb.findByGroup(groupId).map((a) => a.name)
+    subAgentDb.findByGroup(groupId).map((a) => a.name)
   );
 
   for (const preset of PREDEFINED_AGENTS) {
     if (existingNames.has(preset.name)) continue;
 
-    agentDb.create({
+    subAgentDb.create({
       id: randomUUID(),
       groupId,
       name: preset.name,
+      description: '',
       prompt: preset.prompt,
+      model: undefined,
+      tools: [],
+      isEnabled: true,
       status: 'idle',
-      kind: preset.kind,
     });
   }
 }
@@ -149,9 +189,9 @@ export function ensurePredefinedAgentsForAllGroups(): void {
   const allGroups = groupDb.findAll ? groupDb.findAll() : [];
   let created = 0;
   for (const group of allGroups) {
-    const before = agentDb.findByGroup(group.id).length;
+    const before = subAgentDb.findByGroup(group.id).length;
     ensurePredefinedAgents(group.id);
-    const after = agentDb.findByGroup(group.id).length;
+    const after = subAgentDb.findByGroup(group.id).length;
     created += after - before;
   }
   if (created > 0) {

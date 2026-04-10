@@ -379,6 +379,7 @@ export default async function claudeRoutes(fastify: FastifyInstance) {
       return reply.send({
         success: true,
         data: {
+          sessionId: session.sessionId,
           fileName: data.filename,
           filePath: join(session.workDir, 'upload-files', fileName),
           size: buffer.length,

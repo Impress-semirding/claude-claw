@@ -165,7 +165,9 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
     const jid = (request.params as any).jid as string;
 
     try {
-      const group = groupDb.findById(jid);
+      const virtualMatch = jid.match(/^(.+)#agent:(.+)$/);
+      const groupJid = virtualMatch ? virtualMatch[1] : jid;
+      const group = groupDb.findById(groupJid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
       }
@@ -294,7 +296,12 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
     const jid = (request.params as any).jid as string;
 
     try {
-      const group = groupDb.findById(jid);
+      // Parse virtual JID: {groupJid}#agent:{agentId}
+      const virtualMatch = jid.match(/^(.+)#agent:(.+)$/);
+      const groupJid = virtualMatch ? virtualMatch[1] : jid;
+      const virtualAgentId = virtualMatch ? virtualMatch[2] : undefined;
+
+      const group = groupDb.findById(groupJid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
       }
@@ -302,16 +309,17 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
       const before = (request.query as any).before as string | undefined;
       const after = (request.query as any).after as string | undefined;
       const limit = parseInt((request.query as any).limit || '50', 10);
-      const agentId = (request.query as any).agentId as string | undefined;
+      const queryAgentId = (request.query as any).agentId as string | undefined;
+      const agentId = virtualAgentId || queryAgentId;
 
       // 找到该群组的 session（按 agentId 过滤）
       const allSessions = sessionDb.findByUser('');
       const groupSessions = allSessions.filter((s: any) => {
-        if (s.workspace !== jid) return false;
+        if (s.workspace !== groupJid) return false;
         if (agentId) return s.agent_id === agentId || s.agentId === agentId;
         return !s.agent_id && !s.agentId;
       });
-      console.log('[groups/messages] jid=', jid, 'agentId=', agentId, 'groupSessions=', groupSessions.length, 'after=', after, 'before=', before, 'limit=', limit);
+      console.log('[groups/messages] jid=', jid, 'groupJid=', groupJid, 'agentId=', agentId, 'groupSessions=', groupSessions.length, 'after=', after, 'before=', before, 'limit=', limit);
 
       // 获取所有消息
       let allMessages: any[] = [];

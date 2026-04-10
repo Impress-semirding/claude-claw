@@ -193,8 +193,24 @@ export function restoreUser(id: string): void {
   userDb.update(id, { status: 'active', deletedAt: undefined });
 }
 
+const WEAK_PASSWORDS = new Set(['admin123', 'password', '123456', 'qwerty', 'admin']);
+
+function isWeakPassword(password: string): boolean {
+  if (WEAK_PASSWORDS.has(password.toLowerCase())) return true;
+  if (password.length < 8) return true;
+  return false;
+}
+
 // Initialize admin user
 export async function initAdminUser(): Promise<void> {
+  if (isWeakPassword(appConfig.adminPassword) && process.env.NODE_ENV === 'production') {
+    console.error('\n\n╔════════════════════════════════════════════════════════════════╗');
+    console.error('║ SECURITY ALERT: Default/weak admin password detected.         ║');
+    console.error('║ Please set a strong ADMIN_PASSWORD in your environment.       ║');
+    console.error('╚════════════════════════════════════════════════════════════════╝\n');
+    process.exit(1);
+  }
+
   const existing = userDb.findByEmail(appConfig.adminEmail);
   if (!existing) {
     const passwordHash = await hashPassword(appConfig.adminPassword);
@@ -206,6 +222,10 @@ export async function initAdminUser(): Promise<void> {
       passwordHash,
     });
     console.log(`Admin user created: ${appConfig.adminEmail}`);
+  }
+
+  if (isWeakPassword(appConfig.adminPassword)) {
+    console.warn('\n[SECURITY WARNING] Admin password is weak. Please change it in production.\n');
   }
 }
 

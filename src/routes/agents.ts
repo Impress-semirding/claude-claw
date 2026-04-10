@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware } from './auth.js';
-import { agentDb, groupDb } from '../db.js';
+import { subAgentDb, groupDb } from '../db.js';
 import { randomUUID } from 'crypto';
 
 export default async function agentsRoutes(fastify: FastifyInstance) {
@@ -17,12 +17,16 @@ export default async function agentsRoutes(fastify: FastifyInstance) {
         return reply.status(403).send({ error: 'Forbidden' });
       }
 
-      const agentsList = agentDb.findByGroup(jid).map((a) => ({
+      const agentsList = subAgentDb.findByGroup(jid).map((a) => ({
         id: a.id,
         name: a.name,
+        description: a.description || '',
         prompt: a.prompt,
+        model: a.model || null,
+        tools: a.tools || [],
+        is_enabled: a.isEnabled ?? true,
         status: a.status || 'idle',
-        kind: a.kind || 'conversation',
+        kind: 'conversation',
         created_at: new Date(a.createdAt).toISOString(),
         updated_at: new Date(a.updatedAt).toISOString(),
       }));
@@ -47,13 +51,16 @@ export default async function agentsRoutes(fastify: FastifyInstance) {
       }
 
       const body = request.body as any;
-      const agent = agentDb.create({
+      const agent = subAgentDb.create({
         id: randomUUID(),
         groupId: jid,
         name: body.name,
+        description: body.description || '',
         prompt: body.prompt || '',
+        model: body.model || null,
+        tools: body.tools || [],
+        isEnabled: body.is_enabled !== undefined ? !!body.is_enabled : true,
         status: 'idle',
-        kind: body.kind || 'conversation',
       });
 
       return reply.status(201).send({
@@ -61,9 +68,13 @@ export default async function agentsRoutes(fastify: FastifyInstance) {
         agent: {
           id: agent.id,
           name: agent.name,
+          description: agent.description || '',
           prompt: agent.prompt,
+          model: agent.model || null,
+          tools: agent.tools || [],
+          is_enabled: agent.isEnabled ?? true,
           status: agent.status,
-          kind: agent.kind,
+          kind: 'conversation',
           created_at: new Date(agent.createdAt).toISOString(),
         },
       });
@@ -86,17 +97,20 @@ export default async function agentsRoutes(fastify: FastifyInstance) {
         return reply.status(403).send({ error: 'Forbidden' });
       }
 
-      const existing = agentDb.findById(agentId);
+      const existing = subAgentDb.findById(agentId);
       if (!existing || existing.groupId !== jid) {
         return reply.status(404).send({ error: 'Agent not found' });
       }
 
       const body = request.body as any;
-      agentDb.update(agentId, {
+      subAgentDb.update(agentId, {
         name: body.name,
+        description: body.description,
         prompt: body.prompt,
+        model: body.model,
+        tools: body.tools,
+        isEnabled: body.is_enabled,
         status: body.status,
-        kind: body.kind,
       });
 
       return reply.send({ success: true });
@@ -119,12 +133,12 @@ export default async function agentsRoutes(fastify: FastifyInstance) {
         return reply.status(403).send({ error: 'Forbidden' });
       }
 
-      const existing = agentDb.findById(agentId);
+      const existing = subAgentDb.findById(agentId);
       if (!existing || existing.groupId !== jid) {
         return reply.status(404).send({ error: 'Agent not found' });
       }
 
-      agentDb.delete(agentId);
+      subAgentDb.delete(agentId);
       return reply.send({ success: true });
     } catch (error) {
       return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to delete agent' });

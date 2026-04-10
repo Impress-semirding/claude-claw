@@ -7,6 +7,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import fs from 'fs';
 import path from 'path';
 import { buildClawMcpServer } from '../services/claw-mcp-server.js';
+import { PREDEFINED_AGENTS } from '../services/agent-definitions.js';
 
 interface RunnerInput {
   prompt: string;
@@ -40,6 +41,20 @@ async function* singleTextMessage(text: string) {
     parent_tool_use_id: null,
     session_id: '',
   };
+}
+
+function isContextOverflowError(err: unknown): boolean {
+  const msg = String(err).toLowerCase();
+  return (
+    msg.includes('contextoverflow') ||
+    msg.includes('context overflow') ||
+    msg.includes('context_length_exceeded') ||
+    msg.includes('max_context_length') ||
+    msg.includes('too many tokens') ||
+    msg.includes('token limit exceeded') ||
+    msg.includes('上下文溢出') ||
+    msg.includes('context limit')
+  );
 }
 
 async function main() {
@@ -116,8 +131,24 @@ async function main() {
     try { entries = fs.readdirSync(ipcDir); } catch { return; }
     let found = 0;
     for (const name of entries) {
-      if (!name.endsWith('.json')) continue;
       const filePath = path.join(ipcDir, name);
+      // Handle drain sentinel
+      if (name === '_drain' || name === '_drain.json') {
+        try { fs.unlinkSync(filePath); found++; } catch { /* ignore */ }
+        continue;
+      }
+      // Handle interrupt sentinel
+      if (name === '_interrupt' || name === '_interrupt.json') {
+        try {
+          currentStream?.interrupt?.().catch((e: unknown) => {
+            logError('interrupt error:', e);
+          });
+          fs.unlinkSync(filePath);
+          found++;
+        } catch { /* ignore */ }
+        continue;
+      }
+      if (!name.endsWith('.json')) continue;
       try {
         const raw = fs.readFileSync(filePath, 'utf-8');
         let parsed: { text?: string } = {};
@@ -194,6 +225,9 @@ async function main() {
       delete attemptOptions.resumeSessionAt;
     }
 
+    // Inject predefined subagents so the model can delegate via Task tool
+    attemptOptions.agents = PREDEFINED_AGENTS;
+
     const stream = query({ prompt: input.prompt, options: attemptOptions });
     currentStream = stream;
 
@@ -209,7 +243,7 @@ async function main() {
     } catch (err) {
       const errStr = String(err);
       streamError = errStr;
-      if (errStr.toLowerCase().includes('contextoverflow') || errStr.toLowerCase().includes('context overflow')) {
+      if (isContextOverflowError(err)) {
         isContextOverflow = true;
         logError(`contextOverflow on attempt ${runnerAttempt}, capturedSessionId=${capturedSessionId}`);
       } else {
