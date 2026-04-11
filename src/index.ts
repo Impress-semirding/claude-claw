@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import pino from 'pino';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { resolve } from 'path';
@@ -47,15 +48,28 @@ import workspaceConfigRoutes from './routes/workspace-config.js';
 
 // Import WebSocket
 import { setupWebSocket, setWsMessageHandler } from './services/ws.service.js';
+import { logger } from './logger.js';
 import type { WsMessageIn } from './types.js';
 import type { WsClientInfo } from './services/ws.service.js';
 import { wsSendMessageHandler } from './routes/messages.js';
 
 // Create Fastify instance
-const app = Fastify({
-  logger: {
-    level: 'info',
+const fastifyLogger = pino({
+  level: 'info',
+  hooks: {
+    logMethod(inputArgs, method) {
+      // Suppress Fastify's repeated "Server listening at" logs for every interface.
+      // We already print a consolidated startup message after app.listen().
+      if (inputArgs[0] === 'Server listening at %s') {
+        return;
+      }
+      return method.apply(this, inputArgs);
+    },
   },
+});
+
+const app = Fastify({
+  loggerInstance: fastifyLogger,
   // Skill installation via npx can take >60s (downloading CLI + cloning repo).
   // Default Fastify connectionTimeout is 60s; raise it to avoid 500 on long installs.
   connectionTimeout: 300_000,
@@ -87,14 +101,14 @@ async function init() {
 
     // Initialize database
     initSchema();
-    console.log('Database initialized');
+    logger.info('Database initialized');
 
     // Initialize admin user
     await initAdminUser();
 
     // Load existing sessions
     loadSessionsFromDb();
-    console.log('Sessions loaded from database');
+    logger.info('Sessions loaded from database');
 
     // Ensure predefined sub-agents for all existing groups
     ensurePredefinedAgentsForAllGroups();
@@ -107,7 +121,7 @@ async function init() {
     setInterval(() => {
       const cleaned = cleanupIdleSessions();
       if (cleaned > 0) {
-        console.log(`Cleaned up ${cleaned} idle sessions`);
+        logger.info({ cleaned }, 'Cleaned up idle sessions');
       }
     }, 60000); // Every minute
 
@@ -117,7 +131,7 @@ async function init() {
     // Daily heartbeat summary (runs within 2:00–3:00 AM window, throttled to once per 55min)
     setInterval(() => {
       runDailySummaryIfNeeded().catch((err) =>
-        console.error('[daily-summary] interval error:', err)
+        logger.error({ err }, '[daily-summary] interval error')
       );
     }, 60000); // Check every minute
 
@@ -217,7 +231,7 @@ async function init() {
 
     // Error handler
     app.setErrorHandler((error, _request, reply) => {
-      console.error('Error:', error);
+      logger.error({ error }, 'Unhandled error');
       const message = error instanceof Error ? error.message : String(error);
       return reply.status(500).send({
         success: false,
@@ -237,9 +251,9 @@ async function init() {
     const port = appConfig.port;
     await app.ready();
     await app.listen({ port, host: '0.0.0.0' });
-    console.log(`🚀 Server running on http://localhost:${port}`);
-    console.log(`📁 Data directory: ${resolve(appConfig.dataDir)}`);
-    console.log(`🔧 Claude base directory: ${resolve(appConfig.claude.baseDir)}`);
+    logger.info(`🚀 Server running on http://localhost:${port}`);
+    logger.info(`📁 Data directory: ${resolve(appConfig.dataDir)}`);
+    logger.info(`🔧 Claude base directory: ${resolve(appConfig.claude.baseDir)}`);
 
     // Setup WebSocket on the raw HTTP server
     const server = app.server;
@@ -248,14 +262,14 @@ async function init() {
     }
 
     setWsMessageHandler(async (client: WsClientInfo, msg: WsMessageIn) => {
-      console.log('[ws-handler] received', msg.type, 'chatJid=', msg.chatJid, 'contentLength=', msg.content?.length);
+      logger.trace({ type: msg.type, chatJid: msg.chatJid, contentLength: msg.content?.length }, '[ws-handler] received');
       if (msg.type === 'send_message') {
         if (msg.chatJid && msg.content) {
-          console.log('[ws-handler] forwarding send_message to wsSendMessageHandler');
+          logger.trace('[ws-handler] forwarding send_message to wsSendMessageHandler');
           await wsSendMessageHandler(client, msg);
-          console.log('[ws-handler] wsSendMessageHandler done');
+          logger.trace('[ws-handler] wsSendMessageHandler done');
         } else {
-          console.log('[ws-handler] missing chatJid or content');
+          logger.trace('[ws-handler] missing chatJid or content');
         }
       } else if (msg.type === 'terminal_start') {
         // Dockerless edition - terminal not supported
@@ -277,31 +291,29 @@ async function init() {
       }
     });
   } catch (error) {
-    console.error('Failed to initialize:', error);
-    process.exit(1);
+    logger.fatal({ error }, 'Failed to initialize');
+    process.exitCode = 1;
+    return;
   }
 }
 
 import { agentPool } from './services/agent-pool.js';
 
 // Handle graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('\nShutting down gracefully...');
+let isShuttingDown = false;
+async function gracefulShutdown(signal: string) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  logger.info({ signal }, 'Shutting down gracefully...');
   for (const { sessionId } of agentPool.listActive()) {
     agentPool.kill(sessionId, 'SIGTERM');
   }
-  await app.close();
+  await app.close().catch(() => { /* ignore close errors during shutdown */ });
   process.exit(0);
-});
+}
 
-process.on('SIGTERM', async () => {
-  console.log('\nShutting down gracefully...');
-  for (const { sessionId } of agentPool.listActive()) {
-    agentPool.kill(sessionId, 'SIGTERM');
-  }
-  await app.close();
-  process.exit(0);
-});
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 // Start
 init();

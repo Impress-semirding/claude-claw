@@ -69,6 +69,9 @@ async function main() {
 
   const sessionId = String((input.options as any)?.resume || 'unknown');
   const logError = (...args: any[]) => console.error(`[runner:${sessionId}]`, ...args);
+  const logInfo = (...args: any[]) => console.error(`[runner:${sessionId}]`, ...args);
+
+  logInfo('runner started, prompt length =', input.prompt?.length, 'ipcDir =', input.ipcDir);
 
   // Inject in-process claw MCP server when mcpEnv is provided
   if (input.mcpEnv) {
@@ -218,6 +221,7 @@ async function main() {
   while (runnerAttempt <= MAX_RUNNER_RETRIES && !streamExhausted) {
     let streamError: string | null = null;
     let isContextOverflow = false;
+    let hadAssistantOutput = false;
 
     const attemptOptions: any = { ...input.options };
     if (capturedSessionId) {
@@ -228,16 +232,27 @@ async function main() {
     // Inject predefined subagents so the model can delegate via Task tool
     attemptOptions.agents = PREDEFINED_AGENTS;
 
+    logInfo('calling SDK query, attempt', runnerAttempt, 'resume =', attemptOptions.resume);
     const stream = query({ prompt: input.prompt, options: attemptOptions });
     currentStream = stream;
 
     try {
+      let msgCount = 0;
       for await (const msg of stream) {
+        msgCount++;
         if (msg.type === 'system' && msg.subtype === 'init' && msg.session_id) {
           capturedSessionId = msg.session_id;
+          logInfo('captured session_id =', capturedSessionId);
+        }
+        if (msgCount === 1) {
+          logInfo('first stream message received, type =', msg.type);
+        }
+        if (msg.type === 'assistant') {
+          hadAssistantOutput = true;
         }
         console.log(JSON.stringify(msg));
       }
+      logInfo('stream exhausted, total messages =', msgCount);
       streamExhausted = true;
       break;
     } catch (err) {
@@ -246,6 +261,10 @@ async function main() {
       if (isContextOverflowError(err)) {
         isContextOverflow = true;
         logError(`contextOverflow on attempt ${runnerAttempt}, capturedSessionId=${capturedSessionId}`);
+      } else if (errStr.includes('Claude Code process exited with code 1') && hadAssistantOutput) {
+        logInfo(`claude-code process exited after assistant output on attempt ${runnerAttempt}, treating as success`);
+        streamExhausted = true;
+        break;
       } else {
         logError(`fatal stream error on attempt ${runnerAttempt}:`, errStr);
       }
@@ -262,6 +281,7 @@ async function main() {
     break;
   }
 
+  logInfo('runner finishing, streamExhausted =', streamExhausted);
   closeIpcWatcher();
   console.log('__CLAW_END__');
 }

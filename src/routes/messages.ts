@@ -4,6 +4,7 @@ import { groupDb, messageDb, mcpServerDb } from '../db.js';
 import { randomUUID } from 'crypto';
 import { resolve } from 'path';
 import { appConfig } from '../config.js';
+import { logger } from '../logger.js';
 import {
   querySession,
   getOrCreateSession,
@@ -74,7 +75,7 @@ async function handleMessageSend(
     timestamp,
     agentId,
   });
-  console.log('[messages] saved user message', { messageId, sessionId: session.sessionId, chatJid, agentId, groupJid });
+  logger.info({ messageId, sessionId: session.sessionId, chatJid, agentId, groupJid }, '[messages] saved user message');
 
   // Broadcast new_message immediately (use original chatJid so virtual JID tabs receive it)
   const userMsgPayload = {
@@ -89,7 +90,7 @@ async function handleMessageSend(
     source_kind: 'user_message',
     session_id: session.sessionId,
   };
-  console.log('[messages] broadcasting user new_message', JSON.stringify(userMsgPayload));
+  logger.info(userMsgPayload, '[messages] broadcasting user new_message');
   broadcastNewMessage(chatJid, userMsgPayload, agentId);
 
   // Get enabled MCP servers for this user/group and shape them for the SDK
@@ -158,7 +159,7 @@ export async function runAgentQuery(
   let result: import('../services/agent.js').AgentQueryResult | undefined;
 
   const mcpNames = Object.keys(mcpServers);
-  console.log('[messages] runAgentQuery', {
+  logger.info({
     userId: env.userId,
     chatJid,
     sessionId,
@@ -166,7 +167,7 @@ export async function runAgentQuery(
     promptLength: content.length,
     mcpCount: mcpNames.length,
     mcpNames,
-  });
+  }, '[messages] runAgentQuery');
 
   try {
     result = await agent.query(env, content, {
@@ -186,12 +187,12 @@ export async function runAgentQuery(
     turnId = result.turnId;
 
     if (result.error) {
-      console.error('[messages] agent query error', result.error);
+      logger.error({ error: result.error }, '[messages] agent query error');
     }
 
     // Handle overflow partial recovery
     if (result.contextOverflow && result.assistantText) {
-      console.log('[messages] saving overflow_partial, length', result.assistantText.trim().length);
+      logger.info({ length: result.assistantText.trim().length }, '[messages] saving overflow_partial');
       const partialMsgId = randomUUID();
       const partialTimestamp = new Date().toISOString();
       messageDb.create({
@@ -229,12 +230,12 @@ export async function runAgentQuery(
 
     // Handle unrecoverable errors
     if (result.unrecoverableError) {
-      console.log('[messages] unrecoverable error, not saving assistant message');
+      logger.info('[messages] unrecoverable error, not saving assistant message');
       return;
     }
 
     if (result.assistantText.trim()) {
-      console.log('[messages] saving assistant message, length', result.assistantText.trim().length);
+      logger.info({ length: result.assistantText.trim().length }, '[messages] saving assistant message');
       const assistantMsgId = randomUUID();
       const assistantTimestamp = new Date().toISOString();
       messageDb.create({
@@ -253,7 +254,7 @@ export async function runAgentQuery(
         },
       });
 
-      console.log('[messages] broadcasting new_message for assistant reply, chatJid=', chatJid, 'agentId=', agentId, 'msgId=', assistantMsgId);
+      logger.info({ chatJid, agentId, msgId: assistantMsgId }, '[messages] broadcasting new_message for assistant reply');
       broadcastNewMessage(chatJid, {
         id: assistantMsgId,
         chat_jid: chatJid,
@@ -268,13 +269,13 @@ export async function runAgentQuery(
         source_kind: 'sdk_final',
         finalization_reason: 'completed',
       }, agentId);
-      console.log('[messages] broadcast complete');
+      logger.info('[messages] broadcast complete');
     } else {
-      console.log('[messages] no assistant text to save, text length=0');
+      logger.info('[messages] no assistant text to save, text length=0');
     }
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error('[messages] runAgentQuery error', errorMsg);
+    logger.error({ error: errorMsg }, '[messages] runAgentQuery error');
     broadcastStreamEvent(chatJid, {
       eventType: 'error',
       error: errorMsg,
@@ -286,13 +287,13 @@ export async function runAgentQuery(
     broadcastTyping(chatJid, false, agentId);
 
     if (result?.hadCompaction) {
-      console.log('[messages] compaction happened, triggering memory flush then auto-continue');
+      logger.info('[messages] compaction happened, triggering memory flush then auto-continue');
       try {
         const systemPrompt = await agent.buildSystemPrompt(env);
         await runMemoryFlush(env.userId, chatJid, sessionId, mcpServers, systemPrompt);
         await maybeAutoContinue(agent, env, sessionId, mcpServers, chatJid, agentId);
       } catch (err) {
-        console.error('[messages] auto-continue chain error:', err);
+        logger.error({ err }, '[messages] auto-continue chain error');
       }
     }
   }
@@ -310,19 +311,19 @@ async function maybeAutoContinue(
   const key = agentId ? `${chatJid}:${agentId}` : chatJid;
   const count = autoContinueCounts.get(key) || 0;
   if (count >= 3) {
-    console.log('[messages] auto-continue limit reached for', key);
+    logger.info({ key }, '[messages] auto-continue limit reached');
     autoContinueCounts.delete(key);
     autoContinueLastEmpty.delete(key);
     return;
   }
   if (autoContinueLastEmpty.get(key)) {
-    console.log('[messages] last auto-continue produced no text, stopping chain', key);
+    logger.info({ key }, '[messages] last auto-continue produced no text, stopping chain');
     autoContinueCounts.delete(key);
     autoContinueLastEmpty.delete(key);
     return;
   }
   autoContinueCounts.set(key, count + 1);
-  console.log('[messages] auto-continue triggered', key, count + 1);
+  logger.info({ key, count: count + 1 }, '[messages] auto-continue triggered');
 
   broadcastStreamEvent(chatJid, {
     eventType: 'status',
@@ -350,7 +351,7 @@ async function runMemoryFlush(
 ): Promise<void> {
   const flushKey = `flush:${chatJid}`;
   if (runningQueries.get(flushKey)) {
-    console.log('[messages] memory flush already running, skipping');
+    logger.info('[messages] memory flush already running, skipping');
     return;
   }
 
@@ -366,7 +367,7 @@ async function runMemoryFlush(
       '如果没有值得保存的内容，回复一个字：OK。',
     ].join(' ');
 
-    console.log('[messages] starting memory flush query');
+    logger.info('[messages] starting memory flush query');
 
     const stream = querySession({
       userId,
@@ -383,9 +384,9 @@ async function runMemoryFlush(
       // Silently consume
     }
 
-    console.log('[messages] memory flush completed');
+    logger.info('[messages] memory flush completed');
   } catch (err) {
-    console.error('[messages] memory flush error:', err);
+    logger.error({ err }, '[messages] memory flush error');
   } finally {
     runningQueries.delete(flushKey);
   }

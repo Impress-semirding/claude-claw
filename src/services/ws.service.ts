@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { verifyToken } from './auth.service.js';
+import { logger } from '../logger.js';
 import type { WsMessageOut, WsMessageIn, StreamEvent } from '../types.js';
 
 export interface WsClientInfo {
@@ -66,7 +67,7 @@ export function setupWebSocket(server: any): WebSocketServer {
       return;
     }
 
-    console.log('[ws] client connected', session.userId, 'role=', session.role, 'totalClients=', wsClients.size + 1);
+    logger.info({ userId: session.userId, role: session.role, totalClients: wsClients.size + 1 }, '[ws] client connected');
     wsClients.set(ws, session);
 
     ws.on('message', async (data) => {
@@ -119,9 +120,9 @@ export function safeBroadcast(
     }
   }
   if (msg.type === 'new_message') {
-    console.log('[ws] broadcast new_message chatJid=', msg.chatJid, 'messageId=', (msg as any).message?.id, 'sender=', (msg as any).message?.sender, 'sent=', sent, 'skipped=', skipped, 'totalClients=', wsClients.size);
+    logger.info({ chatJid: msg.chatJid, messageId: (msg as any).message?.id, sender: (msg as any).message?.sender, sent, skipped, totalClients: wsClients.size }, '[ws] broadcast new_message');
   } else {
-    console.log('[ws] broadcast', msg.type, 'chatJid=', msg.chatJid, 'sent=', sent, 'skipped=', skipped, 'totalClients=', wsClients.size);
+    logger.info({ type: msg.type, chatJid: msg.chatJid, sent, skipped, totalClients: wsClients.size }, '[ws] broadcast');
   }
 }
 

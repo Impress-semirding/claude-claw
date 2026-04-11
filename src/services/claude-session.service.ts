@@ -18,6 +18,7 @@ import {
 } from './retry.js';
 import { agentPool } from './agent-pool.js';
 import { providerPool } from './provider-pool.js';
+import { logger } from '../logger.js';
 import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 
 const COMPACT_MESSAGE_THRESHOLD = appConfig.claude.compactThreshold || 50;
@@ -53,16 +54,16 @@ function buildCanUseTool(
     _input: Record<string, unknown>,
     _options: { signal: AbortSignal; toolUseID: string; agentID?: string }
   ): Promise<PermissionResult> => {
-    console.log('[canUseTool] checking', toolName, 'allowed=', allowedTools, 'disallowed=', disallowedTools);
+    logger.trace({ toolName, allowedTools, disallowedTools }, '[canUseTool] checking');
     if (disallowedTools && disallowedTools.length > 0 && disallowedTools.includes(toolName)) {
-      console.log('[canUseTool] DENY', toolName);
+      logger.trace({ toolName }, '[canUseTool] DENY');
       return { behavior: 'deny', message: `Tool ${toolName} is disallowed by group policy` };
     }
     if (allowedTools && allowedTools.length > 0 && !allowedTools.includes(toolName)) {
-      console.log('[canUseTool] DENY', toolName);
+      logger.trace({ toolName }, '[canUseTool] DENY');
       return { behavior: 'deny', message: `Tool ${toolName} is not in the allowed tools list` };
     }
-    console.log('[canUseTool] ALLOW', toolName);
+    logger.trace({ toolName }, '[canUseTool] ALLOW');
     return { behavior: 'allow', updatedInput: {} };
   };
 }
@@ -127,7 +128,7 @@ function copyTemplateFiles(templateDir: string, targetDir: string) {
       }
     }
   } catch (error) {
-    console.warn('Failed to copy template files:', error);
+    logger.warn({ error }, 'Failed to copy template files');
   }
 }
 
@@ -260,7 +261,7 @@ export function destroySession(userId: string, workspace: string, sessionId: str
       rmSync(absTmpDir, { recursive: true, force: true });
     }
   } catch (error) {
-    console.warn('Failed to cleanup session directory:', error);
+    logger.warn({ error }, 'Failed to cleanup session directory');
   }
 
   return true;
@@ -283,14 +284,14 @@ export function abortQuery(userId: string, workspace: string, sessionId: string)
     mkdirSync(ipcInputDir, { recursive: true });
     writeFileSync(resolve(ipcInputDir, '_interrupt'), JSON.stringify({ timestamp: Date.now() }), 'utf-8');
   } catch (err) {
-    console.error(`[claude-session:${sessionId}] failed to write interrupt sentinel:`, err);
+    logger.error({ sessionId, err }, '[claude-session] failed to write interrupt sentinel');
   }
 
   // Fallback hard-kill after a short grace period if the runner doesn't exit on its own
   setTimeout(() => {
     const stillActive = agentPool.getProcess(sessionId);
     if (stillActive && !stillActive.killed) {
-      console.log(`[claude-session:${sessionId}] interrupt grace period expired, sending SIGTERM`);
+      logger.warn({ sessionId }, '[claude-session] interrupt grace period expired, sending SIGTERM');
       agentPool.kill(sessionId, 'SIGTERM');
     }
   }, 3000);
@@ -396,7 +397,7 @@ export async function* querySession({
   // Context compaction: if session has too many messages, reset SDK session
   const isCompacting = shouldCompactSession(sessionId);
   if (isCompacting) {
-    console.log('[claude-session] compacting session', sessionId, 'message count exceeded threshold');
+    logger.warn({ sessionId }, '[claude-session] compacting session message count exceeded threshold');
     session.sdkSessionId = undefined;
     session.lastAssistantUuid = undefined;
     sessionDb.update(sessionId, { sdk_session_id: undefined, last_assistant_uuid: undefined });
@@ -433,7 +434,7 @@ export async function* querySession({
     baseUrl = baseUrl.slice(0, -3);
   }
 
-  console.log('[claude-session] querySession start', { sessionId, providerId: selectedProviderId, baseUrl, model, hasAuth: !!(selectedSecret?.anthropicAuthToken || selectedSecret?.anthropicApiKey) });
+  logger.info({ sessionId, providerId: selectedProviderId, baseUrl, model, hasAuth: !!(selectedSecret?.anthropicAuthToken || selectedSecret?.anthropicApiKey) }, '[claude-session] querySession start');
 
   // Prepare isolated workspace
   const isolator = getIsolator();
@@ -571,20 +572,20 @@ process.stdin.on('end', () => {
       ],
     },
     spawnClaudeCodeProcess: (spawnOpts: any) => {
-      console.log('[claude-session] spawnClaudeCodeProcess', spawnOpts.command, spawnOpts.args?.slice(0, 5));
+      logger.trace({ command: spawnOpts.command, args: spawnOpts.args?.slice(0, 5) }, '[claude-session] spawnClaudeCodeProcess');
       const proc = isolator.spawn({
         ...spawnOpts,
         workspaceId: sessionId,
         userId,
       });
       proc.stdout?.on('data', (data: Buffer) => {
-        console.log('[claude-session] spawn stdout:', data.toString().slice(0, 500));
+        logger.trace({ chunk: data.toString().slice(0, 500) }, '[claude-session] spawn stdout');
       });
       proc.stderr?.on('data', (data: Buffer) => {
-        console.error('[claude-session] spawn stderr:', data.toString().slice(0, 500));
+        logger.trace({ chunk: data.toString().slice(0, 500) }, '[claude-session] spawn stderr');
       });
       proc.on('exit', (code, signal) => {
-        console.log('[claude-session] spawn exit', { code, signal });
+        logger.info({ code, signal }, '[claude-session] spawn exit');
       });
       const processId = proc.pid?.toString() || `${userId}-${sessionId}-${Date.now()}`;
       processRegistry.registerProcess(processId, proc, workspace, userId);
@@ -663,12 +664,12 @@ process.stdin.on('end', () => {
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log(`[claude-session:${sessionId}] acquiring pool slot attempt`, attempt);
+      logger.trace({ sessionId, attempt }, '[claude-session] acquiring pool slot attempt');
       await agentPool.acquire(sessionId);
 
       const isTs = runnerPath.endsWith('.ts');
       const command = isTs ? resolve(process.cwd(), 'node_modules/.bin/tsx') : 'node';
-      console.log(`[claude-session:${sessionId}] spawning agent runner`, command, runnerPath, 'workspace', workspace);
+      logger.info({ sessionId, command, runnerPath, workspace }, '[claude-session] spawning agent runner');
 
       const runnerEnv = {
         ...process.env,
@@ -685,6 +686,13 @@ process.stdin.on('end', () => {
       agentPool.bind(sessionId, proc);
       const processId = `${userId}-${sessionId}-${Date.now()}`;
       processRegistry.registerProcess(processId, proc, workspace, userId);
+
+      proc.on('exit', (code, signal) => {
+        logger.info({ sessionId, code, signal, pid: proc?.pid }, '[claude-session] agent runner exited');
+      });
+      proc.on('error', (err) => {
+        logger.error({ sessionId, error: err.message }, '[claude-session] agent runner process error');
+      });
 
       // Re-serialize options on every retry so previous attempt mutations don't leak
       const attemptOptions: any = { ...serializableOptions };
@@ -717,13 +725,14 @@ process.stdin.on('end', () => {
           return;
         }
         proc!.stdin.on('error', (err) => {
-          console.error(`[claude-session:${sessionId}] runner stdin error:`, err.message);
+          logger.error({ sessionId, error: err.message }, '[claude-session] runner stdin error');
         });
         proc!.stdin.write(runnerInput, (err) => {
           if (err) {
             reject(err);
           } else {
             proc!.stdin!.end();
+            logger.trace({ sessionId, inputBytes: runnerInput.length }, '[claude-session] runner stdin write complete');
             resolve();
           }
         });
@@ -751,7 +760,7 @@ process.stdin.on('end', () => {
 
       // Hard timeout (#2)
       const hardTimeout = setTimeout(() => {
-        console.error(`[claude-session:${sessionId}] hard timeout reached, killing runner`);
+        logger.error({ sessionId }, '[claude-session] hard timeout reached, killing runner');
         try { proc!.kill('SIGKILL'); } catch {}
       }, QUERY_HARD_TIMEOUT_MS);
 
@@ -801,15 +810,15 @@ process.stdin.on('end', () => {
                   groupId: mcp.chatJid,
                   enabled: true,
                 });
-                console.log(`[claude-session:${sessionId}] scheduled task via MCP`, taskId);
+                logger.info({ sessionId, taskId }, '[claude-session] scheduled task via MCP');
               }
             } catch (e) {
-              console.error(`[claude-session:${sessionId}] failed to parse MCP stderr line:`, trimmed.slice(0, 200));
+              logger.error({ sessionId, line: trimmed.slice(0, 200) }, '[claude-session] failed to parse MCP stderr line');
             }
             continue;
           }
 
-          console.error(`[claude-session:${sessionId}] runner stderr:`, trimmed.slice(0, 500));
+          logger.trace({ sessionId, line: trimmed.slice(0, 500) }, '[claude-session] runner stderr');
         }
       });
 
@@ -829,9 +838,11 @@ process.stdin.on('end', () => {
         try {
           message = JSON.parse(trimmed);
         } catch (e) {
-          console.error(`[claude-session:${sessionId}] Failed to parse runner output line:`, trimmed.slice(0, 200));
+          logger.error({ sessionId, line: trimmed.slice(0, 200) }, '[claude-session] Failed to parse runner output line');
           continue;
         }
+
+        logger.trace({ sessionId, type: message.type, subtype: message.subtype }, '[claude-session] runner stdout line');
 
         // Handle runner-internal errors
         if (message.__runner_error__) {
@@ -908,6 +919,8 @@ process.stdin.on('end', () => {
         yield event;
       }
 
+      logger.trace({ sessionId, hadAssistantOutput, streamError }, '[claude-session] runner stdout stream ended');
+
       clearTimeout(hardTimeout);
 
       if (processor) {
@@ -934,7 +947,7 @@ process.stdin.on('end', () => {
     } catch (err) {
       const category = categorizeError(err);
       lastError = err instanceof Error ? err : new Error(String(err));
-      console.error(`[claude-session:${sessionId}] attempt ${attempt} failed:`, category, lastError.message);
+      logger.error({ sessionId, attempt, category, error: lastError.message }, '[claude-session] attempt failed');
 
       if (proc) {
         try { proc.kill('SIGKILL'); } catch {}
@@ -949,7 +962,7 @@ process.stdin.on('end', () => {
       // Conservative retry policy for stream-stage errors (#5):
       // Only retry if we haven't produced any assistant output yet.
       if (hadAssistantOutput) {
-        console.log(`[claude-session:${sessionId}] assistant output already produced, skipping retry`);
+        logger.info({ sessionId }, '[claude-session] assistant output already produced, skipping retry');
         break;
       }
 
@@ -970,7 +983,7 @@ process.stdin.on('end', () => {
     session.status = 'error';
     sessionDb.update(sessionId, { status: 'error' });
     const errorMsg = lastError?.message || 'Claude query failed';
-    console.error(`[claude-session:${sessionId}] querySession exhausted retries`, errorMsg);
+    logger.error({ sessionId, error: errorMsg }, '[claude-session] querySession exhausted retries');
     yield { type: 'error', error: errorMsg, timestamp: Date.now() };
     if (selectedProviderId) {
       providerPool.reportError(selectedProviderId);
