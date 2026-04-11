@@ -319,31 +319,22 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
         if (agentId) return s.agent_id === agentId || s.agentId === agentId;
         return !s.agent_id && !s.agentId;
       });
-      console.log('[groups/messages] jid=', jid, 'groupJid=', groupJid, 'agentId=', agentId, 'groupSessions=', groupSessions.length, 'after=', after, 'before=', before, 'limit=', limit);
-
       // 获取所有消息
       let allMessages: any[] = [];
       for (const session of groupSessions) {
         const s = session as any;
         const msgs = messageDb.findBySession(s.id, 5000);
-        console.log('[groups/messages] session=', s.id, 'msgs=', msgs.length);
         allMessages = allMessages.concat(msgs.map((m) => ({ ...toMessage(m), chat_jid: jid })));
       }
 
       // 按时间排序
       allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      console.log('[groups/messages] totalMessages=', allMessages.length);
 
       // 应用过滤（防御式处理：统一转为数字毫秒比较，避免 Invalid Date）
       const afterTs = after ? new Date(after).getTime() : null;
       const beforeTs = before ? new Date(before).getTime() : null;
       if (afterTs && !Number.isNaN(afterTs)) {
-        const beforeFilter = allMessages.length;
-        const maxTs = beforeFilter > 0 ? Math.max(...allMessages.map((m) => new Date(m.timestamp).getTime())) : 0;
         allMessages = allMessages.filter((m) => new Date(m.timestamp).getTime() > afterTs);
-        if (allMessages.length === 0 && beforeFilter > 0) {
-          console.warn('[groups/messages] after filter dropped all messages. after=', after, 'afterTs=', afterTs, 'latestMsgTs=', maxTs);
-        }
       }
       if (beforeTs && !Number.isNaN(beforeTs)) {
         allMessages = allMessages.filter((m) => new Date(m.timestamp).getTime() < beforeTs);
@@ -354,7 +345,6 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
       // 限制数量
       const hasMore = allMessages.length > limit;
       const messages = allMessages.slice(-limit);
-      console.log('[groups/messages] returning', messages.length, 'messages, hasMore=', hasMore);
 
       return reply.send({ messages, hasMore });
     } catch (error) {

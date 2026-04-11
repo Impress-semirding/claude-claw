@@ -361,18 +361,6 @@ export class ClaudeAgent {
       this.disallowedTools,
     );
 
-    console.log('[agent] query', {
-      agentId: this.id,
-      agentName: this.name,
-      chatJid,
-      sessionId,
-      promptLength: content.length,
-      systemPromptLength: systemPrompt.length,
-      maxTurns: this.maxTurns,
-      effectiveAllowedTools,
-      effectiveDisallowedTools,
-    });
-
     let assistantText = '';
     let hadCompaction = false;
     let contextOverflow = false;

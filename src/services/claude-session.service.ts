@@ -818,7 +818,6 @@ process.stdin.on('end', () => {
             continue;
           }
 
-          logger.trace({ sessionId, line: trimmed.slice(0, 500) }, '[claude-session] runner stderr');
         }
       });
 
@@ -841,8 +840,6 @@ process.stdin.on('end', () => {
           logger.error({ sessionId, line: trimmed.slice(0, 200) }, '[claude-session] Failed to parse runner output line');
           continue;
         }
-
-        logger.trace({ sessionId, type: message.type, subtype: message.subtype }, '[claude-session] runner stdout line');
 
         // Handle runner-internal errors
         if (message.__runner_error__) {

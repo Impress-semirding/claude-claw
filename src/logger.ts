@@ -9,7 +9,7 @@ mkdirSync(logsDir, { recursive: true });
 const fileDest = pino.destination({ dest: resolve(logsDir, 'app.log'), sync: true });
 
 export const logger = pino({
-  level: process.env.LOG_LEVEL || 'trace',
+  level: process.env.LOG_LEVEL || 'info',
   timestamp: pino.stdTimeFunctions.isoTime,
 }, pino.multistream([
   { stream: process.stdout, level: 'trace' },

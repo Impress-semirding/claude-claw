@@ -122,7 +122,7 @@ export function safeBroadcast(
   if (msg.type === 'new_message') {
     logger.info({ chatJid: msg.chatJid, messageId: (msg as any).message?.id, sender: (msg as any).message?.sender, sent, skipped, totalClients: wsClients.size }, '[ws] broadcast new_message');
   } else {
-    logger.info({ type: msg.type, chatJid: msg.chatJid, sent, skipped, totalClients: wsClients.size }, '[ws] broadcast');
+    logger.trace({ type: msg.type, chatJid: msg.chatJid, sent, skipped, totalClients: wsClients.size }, '[ws] broadcast');
   }
 }
 
