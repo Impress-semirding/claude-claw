@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, existsSync, copyFileSync, readdirSync, cpSync, writeFileSync } from 'fs';
+import { mkdirSync, rmSync, existsSync, copyFileSync, readdirSync, cpSync, writeFileSync, createWriteStream } from 'fs';
 import { resolve, join } from 'path';
 import { spawn } from 'child_process';
 import { createInterface } from 'readline';
@@ -659,6 +659,7 @@ process.stdin.on('end', () => {
   const QUERY_HARD_TIMEOUT_MS = 10 * 60 * 1000;
   let lastError: Error | null = null;
   let proc: ReturnType<typeof spawn> | null = null;
+  let runnerLogStream: ReturnType<typeof createWriteStream> | null = null;
   let streamConsumed = false;
   let hadAssistantOutput = false;
 
@@ -671,11 +672,15 @@ process.stdin.on('end', () => {
       const command = isTs ? resolve(process.cwd(), 'node_modules/.bin/tsx') : 'node';
       logger.info({ sessionId, command, runnerPath, workspace }, '[claude-session] spawning agent runner');
 
+      const runnerStartTs = Date.now();
+      const runnerLogPath = resolve(appConfig.dataDir, 'logs', `runner-${sessionId}.log`);
+      runnerLogStream = createWriteStream(runnerLogPath, { flags: 'a' });
+
       const runnerEnv = {
         ...process.env,
         ...env,
         CLAUDE_CONFIG_DIR: absConfigDir,
-        NODE_OPTIONS: '--max-old-space-size=2048',
+        NODE_OPTIONS: '--max-old-space-size=4096',
       };
       proc = spawn(command, [runnerPath], {
         cwd: process.cwd(),
@@ -766,6 +771,9 @@ process.stdin.on('end', () => {
 
       let stderrBuffer = '';
       proc.stderr?.on('data', (data: Buffer) => {
+        if (runnerLogStream) {
+          runnerLogStream.write(data);
+        }
         stderrBuffer += data.toString('utf-8');
         let newlineIndex: number;
         while ((newlineIndex = stderrBuffer.indexOf('\n')) !== -1) {
@@ -821,17 +829,29 @@ process.stdin.on('end', () => {
         }
       });
 
-      let firstTokenFired = false;
-      const FIRST_TOKEN_TIMEOUT_MS = 15000;
-      const firstTokenTimer = setTimeout(() => {
-        firstTokenFired = true;
+      let firstTokenReceived = false;
+      let killedByFirstTokenTimeout = false;
+      const STATUS_SLOW_MS = 15000;
+      const FIRST_TOKEN_KILL_MS = 30000;
+
+      const slowStatusTimer = setTimeout(() => {
         onStreamEvent?.({ eventType: 'status', statusText: '模型响应较慢，请稍候…', turnId: turnId || `turn-${Date.now()}` });
-      }, FIRST_TOKEN_TIMEOUT_MS);
+      }, STATUS_SLOW_MS);
+
+      const firstTokenKillTimer = setTimeout(() => {
+        killedByFirstTokenTimeout = true;
+        logger.error({ sessionId }, '[claude-session] first token timeout reached, killing runner');
+        try { proc!.kill('SIGKILL'); } catch {}
+      }, FIRST_TOKEN_KILL_MS);
 
       for await (const line of rl) {
-        if (!firstTokenFired) {
-          clearTimeout(firstTokenTimer);
-          firstTokenFired = true;
+        if (!firstTokenReceived) {
+          firstTokenReceived = true;
+          clearTimeout(slowStatusTimer);
+          clearTimeout(firstTokenKillTimer);
+          if (selectedProviderId) {
+            providerPool.reportLatency(selectedProviderId, Date.now() - runnerStartTs);
+          }
         }
         if (abortController.signal.aborted) {
           yield { type: 'error', error: 'Query aborted by user', timestamp: Date.now() };
@@ -930,7 +950,14 @@ process.stdin.on('end', () => {
       logger.trace({ sessionId, hadAssistantOutput, streamError }, '[claude-session] runner stdout stream ended');
 
       clearTimeout(hardTimeout);
-      clearTimeout(firstTokenTimer);
+      clearTimeout(slowStatusTimer);
+      clearTimeout(firstTokenKillTimer);
+      runnerLogStream?.end();
+      runnerLogStream = null;
+
+      if (killedByFirstTokenTimeout) {
+        throw new Error('First token timeout after 30s');
+      }
 
       if (processor) {
         processor.cleanup();
@@ -962,6 +989,10 @@ process.stdin.on('end', () => {
         try { proc.kill('SIGKILL'); } catch {}
         agentPool.release(sessionId);
         proc = null;
+      }
+      if (runnerLogStream) {
+        runnerLogStream.end();
+        runnerLogStream = null;
       }
 
       if (abortController.signal.aborted) {

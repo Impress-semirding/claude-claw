@@ -5,6 +5,9 @@
  *   - round-robin
  *   - weighted-random
  *   - failover
+ *   - circuit breaker (consecutive errors / consecutive slow requests)
+ *   - p99 latency sliding window
+ *   - priority fallback
  *
  * Health tracking marks providers unhealthy after consecutive errors and
  * excludes them from selection until recoveryIntervalMs has passed.
@@ -19,6 +22,7 @@ interface ProviderRecord {
   name: string;
   enabled: boolean;
   weight: number;
+  priority?: number;
   anthropicBaseUrl: string;
   anthropicModel: string;
   customEnv?: Record<string, string>;
@@ -39,12 +43,16 @@ interface ProviderSecretRecord {
 interface BalancingConfig {
   strategy: 'round-robin' | 'weighted-random' | 'failover';
   unhealthyThreshold: number;
+  slowThreshold: number;
   recoveryIntervalMs: number;
+  latencyWindowMs: number;
+  slowLatencyThresholdMs: number;
 }
 
 interface ProviderHealth {
   healthy: boolean;
   consecutiveErrors: number;
+  consecutiveSlows: number;
   lastErrorAt: number | null;
   lastSuccessAt: number | null;
   unhealthySince: number | null;
@@ -78,17 +86,22 @@ function getDefaultBalancing(): BalancingConfig {
   return {
     strategy: 'round-robin',
     unhealthyThreshold: 3,
+    slowThreshold: 3,
     recoveryIntervalMs: 300_000,
+    latencyWindowMs: 600_000,
+    slowLatencyThresholdMs: 30_000,
   };
 }
 
 const healthStates = new Map<string, ProviderHealth>();
+const latencyHistory = new Map<string, Array<{ ts: number; ms: number }>>();
 
 function initHealth(providerId: string): ProviderHealth {
   if (!healthStates.has(providerId)) {
     healthStates.set(providerId, {
       healthy: true,
       consecutiveErrors: 0,
+      consecutiveSlows: 0,
       lastErrorAt: null,
       lastSuccessAt: Date.now(),
       unhealthySince: null,
@@ -97,16 +110,44 @@ function initHealth(providerId: string): ProviderHealth {
   return healthStates.get(providerId)!;
 }
 
-function isHealthy(health: ProviderHealth, recoveryIntervalMs: number): boolean {
+function pruneLatency(providerId: string, windowMs: number) {
+  const samples = latencyHistory.get(providerId);
+  if (!samples) return;
+  const cutoff = Date.now() - windowMs;
+  const kept = samples.filter((s) => s.ts >= cutoff);
+  if (kept.length === 0) {
+    latencyHistory.delete(providerId);
+  } else {
+    latencyHistory.set(providerId, kept);
+  }
+}
+
+function getP99Latency(providerId: string): number | null {
+  const samples = latencyHistory.get(providerId);
+  if (!samples || samples.length === 0) return null;
+  const sorted = samples.map((s) => s.ms).sort((a, b) => a - b);
+  const idx = Math.ceil(sorted.length * 0.99) - 1;
+  return sorted[Math.max(0, idx)];
+}
+
+function isHealthy(health: ProviderHealth, balancing: BalancingConfig): boolean {
   if (health.healthy) return true;
-  if (health.unhealthySince && Date.now() - health.unhealthySince >= recoveryIntervalMs) {
+  if (health.unhealthySince && Date.now() - health.unhealthySince >= balancing.recoveryIntervalMs) {
     // Auto-recover after interval
     health.healthy = true;
     health.consecutiveErrors = 0;
+    health.consecutiveSlows = 0;
     health.unhealthySince = null;
     return true;
   }
   return false;
+}
+
+function markUnhealthy(health: ProviderHealth): void {
+  health.healthy = false;
+  if (!health.unhealthySince) {
+    health.unhealthySince = Date.now();
+  }
 }
 
 export function getProviderHealth(providerId: string): ProviderHealth {
@@ -117,6 +158,7 @@ export function resetProviderHealth(providerId: string): void {
   healthStates.set(providerId, {
     healthy: true,
     consecutiveErrors: 0,
+    consecutiveSlows: 0,
     lastErrorAt: null,
     lastSuccessAt: Date.now(),
     unhealthySince: null,
@@ -144,7 +186,11 @@ class ProviderPool {
 
     for (const p of enabled) {
       const health = initHealth(p.id);
-      if (!isHealthy(health, balancing.recoveryIntervalMs)) continue;
+      if (!isHealthy(health, balancing)) continue;
+      if (health.consecutiveSlows >= balancing.slowThreshold) continue;
+      pruneLatency(p.id, balancing.latencyWindowMs);
+      const p99 = getP99Latency(p.id);
+      if (p99 !== null && p99 > balancing.slowLatencyThresholdMs) continue;
       if (excludeIds?.includes(p.id)) continue;
       candidates.push({ provider: p, secret: secrets[p.id] || {} });
     }
@@ -156,38 +202,48 @@ class ProviderPool {
       }
     }
 
+    // Priority fallback: lower number = higher priority
+    candidates.sort((a, b) => (a.provider.priority ?? 100) - (b.provider.priority ?? 100));
+
     return candidates;
   }
 
-  selectProvider(excludeIds?: string[]): { provider: ProviderRecord; secret: ProviderSecretRecord } | undefined {
+  selectProvider(excludeIds?: string[]): { provider: ProviderRecord; secret: ProviderSecretRecord; providerId: string } | undefined {
     const candidates = this.getCandidates(excludeIds);
     if (candidates.length === 0) return undefined;
 
     const balancing = readJsonConfig('claude-balancing', getDefaultBalancing());
+
+    let selected: { provider: ProviderRecord; secret: ProviderSecretRecord } | undefined;
 
     if (balancing.strategy === 'weighted-random') {
       const totalWeight = candidates.reduce((sum, c) => sum + (c.provider.weight || 1), 0);
       let rnd = Math.random() * totalWeight;
       for (const c of candidates) {
         rnd -= c.provider.weight || 1;
-        if (rnd <= 0) return c;
+        if (rnd <= 0) {
+          selected = c;
+          break;
+        }
       }
-      return candidates[candidates.length - 1];
+      if (!selected) selected = candidates[candidates.length - 1];
+    } else if (balancing.strategy === 'failover') {
+      selected = candidates[0];
+    } else {
+      // round-robin
+      this.roundRobinIndex = (this.roundRobinIndex + 1) % Math.max(candidates.length, 1);
+      selected = candidates[this.roundRobinIndex];
     }
 
-    if (balancing.strategy === 'failover') {
-      return candidates[0];
-    }
-
-    // round-robin
-    this.roundRobinIndex = (this.roundRobinIndex + 1) % Math.max(candidates.length, 1);
-    return candidates[this.roundRobinIndex];
+    if (!selected) return undefined;
+    return { provider: selected.provider, secret: selected.secret, providerId: selected.provider.id };
   }
 
   reportSuccess(providerId: string): void {
     const health = initHealth(providerId);
     health.healthy = true;
     health.consecutiveErrors = 0;
+    health.consecutiveSlows = 0;
     health.lastErrorAt = null;
     health.lastSuccessAt = Date.now();
     health.unhealthySince = null;
@@ -199,10 +255,32 @@ class ProviderPool {
     health.consecutiveErrors += 1;
     health.lastErrorAt = Date.now();
     if (health.consecutiveErrors >= balancing.unhealthyThreshold) {
-      health.healthy = false;
-      if (!health.unhealthySince) {
-        health.unhealthySince = Date.now();
-      }
+      markUnhealthy(health);
+    }
+  }
+
+  reportLatency(providerId: string, latencyMs: number): void {
+    const balancing = readJsonConfig('claude-balancing', getDefaultBalancing());
+    let samples = latencyHistory.get(providerId);
+    if (!samples) {
+      samples = [];
+      latencyHistory.set(providerId, samples);
+    }
+    samples.push({ ts: Date.now(), ms: latencyMs });
+    pruneLatency(providerId, balancing.latencyWindowMs);
+
+    const p99 = getP99Latency(providerId);
+    if (p99 !== null && p99 > balancing.slowLatencyThresholdMs) {
+      this.reportSlow(providerId);
+    }
+  }
+
+  reportSlow(providerId: string): void {
+    const balancing = readJsonConfig('claude-balancing', getDefaultBalancing());
+    const health = initHealth(providerId);
+    health.consecutiveSlows += 1;
+    if (health.consecutiveSlows >= balancing.slowThreshold) {
+      markUnhealthy(health);
     }
   }
 }

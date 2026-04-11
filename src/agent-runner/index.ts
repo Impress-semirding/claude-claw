@@ -262,7 +262,7 @@ async function main() {
         isContextOverflow = true;
         logError(`contextOverflow on attempt ${runnerAttempt}, capturedSessionId=${capturedSessionId}`);
       } else if (errStr.includes('Claude Code process exited with code 1') && hadAssistantOutput) {
-        logInfo(`claude-code process exited after assistant output on attempt ${runnerAttempt}, treating as success`);
+        logError(`WORKAROUND: claude-code exited with code 1 after assistant output on attempt ${runnerAttempt}. capturedSessionId=${capturedSessionId}. Treating as success, but this incident is logged for audit.`);
         streamExhausted = true;
         break;
       } else {
