@@ -817,11 +817,22 @@ process.stdin.on('end', () => {
             }
             continue;
           }
-
+          logger.info({ sessionId, line: trimmed }, '[agent-runner] stderr');
         }
       });
 
+      let firstTokenFired = false;
+      const FIRST_TOKEN_TIMEOUT_MS = 15000;
+      const firstTokenTimer = setTimeout(() => {
+        firstTokenFired = true;
+        onStreamEvent?.({ eventType: 'status', statusText: '模型响应较慢，请稍候…', turnId: turnId || `turn-${Date.now()}` });
+      }, FIRST_TOKEN_TIMEOUT_MS);
+
       for await (const line of rl) {
+        if (!firstTokenFired) {
+          clearTimeout(firstTokenTimer);
+          firstTokenFired = true;
+        }
         if (abortController.signal.aborted) {
           yield { type: 'error', error: 'Query aborted by user', timestamp: Date.now() };
           break;
@@ -919,6 +930,7 @@ process.stdin.on('end', () => {
       logger.trace({ sessionId, hadAssistantOutput, streamError }, '[claude-session] runner stdout stream ended');
 
       clearTimeout(hardTimeout);
+      clearTimeout(firstTokenTimer);
 
       if (processor) {
         processor.cleanup();
