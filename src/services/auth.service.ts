@@ -39,12 +39,26 @@ export async function generateToken(user: IUser): Promise<string> {
   return token;
 }
 
-// Verify JWT token
+// Verify JWT token (also checks revocation and user status)
 export async function verifyToken(token: string): Promise<IAuthToken | null> {
   try {
     const { payload } = await joseJwtVerify(token, JWT_SECRET);
+    const userId = payload.userId as string;
+
+    // Check session is active and not expired
+    const session = userSessionDb.findByToken(token);
+    if (!session || session.status !== 'active' || session.expiresAt < Date.now()) {
+      return null;
+    }
+
+    // Check user status
+    const user = userDb.findById(userId);
+    if (!user || user.status === 'deleted' || user.status === 'disabled') {
+      return null;
+    }
+
     return {
-      userId: payload.userId as string,
+      userId,
       email: payload.email as string,
       role: payload.role as string,
     };

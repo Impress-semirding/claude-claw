@@ -35,70 +35,163 @@
 {"level":30,"time":"2026-04-12T12:33:18.031Z","pid":36105,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
 [task-scheduler] scheduler loop started
 {"level":60,"time":"2026-04-12T12:33:18.063Z","pid":36105,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
-30,"time":1775995977159,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-7","req":{"method":"GET","url":"/api/groups","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54111},"msg":"incoming request"}
-{"level":30,"time":1775995977160,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-7","res":{"statusCode":200},"responseTime":0.5897912979125977,"msg":"request completed"}
-{"level":30,"time":1775996034112,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-8","req":{"method":"GET","url":"/api/auth/me","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54145},"msg":"incoming request"}
-{"level":30,"time":1775996034113,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-8","res":{"statusCode":200},"responseTime":0.9099998474121094,"msg":"request completed"}
-{"level":30,"time":1775996034162,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-9","req":{"method":"GET","url":"/api/groups","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54147},"msg":"incoming request"}
-{"level":30,"time":1775996034164,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-9","res":{"statusCode":200},"responseTime":1.4307498931884766,"msg":"request completed"}
-{"level":30,"time":1775996034164,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-a","req":{"method":"GET","url":"/api/billing/status","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54149},"msg":"incoming request"}
-{"level":30,"time":1775996034165,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-a","res":{"statusCode":200},"responseTime":1.0316247940063477,"msg":"request completed"}
-{"level":30,"time":"2026-04-12T12:13:54.165Z","pid":28157,"hostname":"dingxuedeMacBook-Pro.local","userId":"8d48ec6e-810f-4c97-b179-c41bd0836db2","role":"admin","totalClients":2,"msg":"[ws] client connected"}
-{"level":30,"time":1775996034166,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-b","req":{"method":"GET","url":"/api/groups","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54151},"msg":"incoming request"}
-{"level":30,"time":1775996034166,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-b","res":{"statusCode":200},"responseTime":0.4600410461425781,"msg":"request completed"}
-{"level":30,"time":1775996034167,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-c","req":{"method":"GET","url":"/api/billing/status","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54152},"msg":"incoming request"}
-{"level":30,"time":1775996034167,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-c","res":{"statusCode":200},"responseTime":0.3454170227050781,"msg":"request completed"}
-{"level":30,"time":1775996034476,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-d","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/files?","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54163},"msg":"incoming request"}
-{"level":30,"time":1775996034477,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-e","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/messages?limit=50","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54164},"msg":"incoming request"}
-{"level":30,"time":1775996034485,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-e","res":{"statusCode":200},"responseTime":8.246334075927734,"msg":"request completed"}
-{"level":30,"time":1775996034485,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-f","req":{"method":"GET","url":"/api/status","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54165},"msg":"incoming request"}
-{"level":30,"time":1775996034486,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-d","res":{"statusCode":200},"responseTime":10.297292232513428,"msg":"request completed"}
-{"level":30,"time":1775996034486,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-f","res":{"statusCode":200},"responseTime":1.2694172859191895,"msg":"request completed"}
-{"level":30,"time":1775996034486,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-g","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/agents","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54166},"msg":"incoming request"}
-{"level":30,"time":1775996034487,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-g","res":{"statusCode":200},"responseTime":0.42337512969970703,"msg":"request completed"}
-{"level":30,"time":1775996034488,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-h","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/messages?limit=50","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54167},"msg":"incoming request"}
-{"level":30,"time":1775996034488,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-i","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/files?","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54168},"msg":"incoming request"}
-{"level":30,"time":1775996034491,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-h","res":{"statusCode":200},"responseTime":3.0762081146240234,"msg":"request completed"}
-{"level":30,"time":1775996034492,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-j","req":{"method":"GET","url":"/api/status","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54173},"msg":"incoming request"}
-{"level":30,"time":1775996034492,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-k","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/agents","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54174},"msg":"incoming request"}
-{"level":30,"time":1775996034492,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-j","res":{"statusCode":200},"responseTime":0.5142078399658203,"msg":"request completed"}
-{"level":30,"time":1775996034493,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-k","res":{"statusCode":200},"responseTime":0.49170827865600586,"msg":"request completed"}
-{"level":30,"time":1775996034493,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-i","res":{"statusCode":200},"responseTime":4.4461669921875,"msg":"request completed"}
-{"level":30,"time":1775996036481,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-l","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/messages?limit=50&after=2026-04-12T12%3A06%3A45.943Z","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54179},"msg":"incoming request"}
-{"level":30,"time":1775996036484,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-l","res":{"statusCode":200},"responseTime":2.5915842056274414,"msg":"request completed"}
-{"level":30,"time":1775996117535,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-m","req":{"method":"GET","url":"/api/auth/me","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54215},"msg":"incoming request"}
-{"level":30,"time":1775996117536,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-m","res":{"statusCode":200},"responseTime":0.47579097747802734,"msg":"request completed"}
-{"level":30,"time":1775996117569,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-n","req":{"method":"GET","url":"/api/groups","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54216},"msg":"incoming request"}
-{"level":30,"time":1775996117570,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-n","res":{"statusCode":200},"responseTime":0.4617919921875,"msg":"request completed"}
-{"level":30,"time":1775996117570,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-o","req":{"method":"GET","url":"/api/billing/status","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54219},"msg":"incoming request"}
-{"level":30,"time":1775996117570,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-o","res":{"statusCode":200},"responseTime":0.5027909278869629,"msg":"request completed"}
-{"level":30,"time":"2026-04-12T12:15:17.571Z","pid":28157,"hostname":"dingxuedeMacBook-Pro.local","userId":"8d48ec6e-810f-4c97-b179-c41bd0836db2","role":"admin","totalClients":2,"msg":"[ws] client connected"}
-{"level":30,"time":1775996117571,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-p","req":{"method":"GET","url":"/api/groups","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54221},"msg":"incoming request"}
-{"level":30,"time":1775996117572,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-p","res":{"statusCode":200},"responseTime":0.38033294677734375,"msg":"request completed"}
-{"level":30,"time":1775996117572,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-q","req":{"method":"GET","url":"/api/billing/status","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54222},"msg":"incoming request"}
-{"level":30,"time":1775996117572,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-q","res":{"statusCode":200},"responseTime":0.5296669006347656,"msg":"request completed"}
-{"level":30,"time":1775996117880,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-r","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/files?","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54233},"msg":"incoming request"}
-{"level":30,"time":1775996117880,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-s","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/messages?limit=50","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54234},"msg":"incoming request"}
-{"level":30,"time":1775996117881,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-t","req":{"method":"GET","url":"/api/status","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54235},"msg":"incoming request"}
-{"level":30,"time":1775996117883,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-s","res":{"statusCode":200},"responseTime":2.9997496604919434,"msg":"request completed"}
-{"level":30,"time":1775996117883,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-u","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/agents","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54236},"msg":"incoming request"}
-{"level":30,"time":1775996117884,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-t","res":{"statusCode":200},"responseTime":2.78487491607666,"msg":"request completed"}
-{"level":30,"time":1775996117884,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-r","res":{"statusCode":200},"responseTime":3.9624171257019043,"msg":"request completed"}
-{"level":30,"time":1775996117885,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-u","res":{"statusCode":200},"responseTime":1.9816250801086426,"msg":"request completed"}
-{"level":30,"time":1775996117886,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-v","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/messages?limit=50","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54238},"msg":"incoming request"}
-{"level":30,"time":1775996117887,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-w","req":{"method":"GET","url":"/api/status","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54240},"msg":"incoming request"}
-{"level":30,"time":1775996117888,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-v","res":{"statusCode":200},"responseTime":2.255833148956299,"msg":"request completed"}
-{"level":30,"time":1775996117889,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-w","res":{"statusCode":200},"responseTime":2.125499725341797,"msg":"request completed"}
-{"level":30,"time":1775996117889,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-x","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/files?","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54241},"msg":"incoming request"}
-{"level":30,"time":1775996117889,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-y","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/agents","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54244},"msg":"incoming request"}
-{"level":30,"time":1775996117890,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-y","res":{"statusCode":200},"responseTime":1.2451248168945312,"msg":"request completed"}
-{"level":30,"time":1775996117891,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-x","res":{"statusCode":200},"responseTime":2.030792236328125,"msg":"request completed"}
-{"level":30,"time":1775996119883,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-z","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/messages?limit=50&after=2026-04-12T12%3A06%3A45.943Z","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54248},"msg":"incoming request"}
-{"level":30,"time":1775996119888,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-z","res":{"statusCode":200},"responseTime":4.875124931335449,"msg":"request completed"}
-{"level":30,"time":1775996121891,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-10","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/messages?limit=50&after=2026-04-12T12%3A06%3A45.943Z","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54253},"msg":"incoming request"}
-{"level":30,"time":1775996121894,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-10","res":{"statusCode":200},"responseTime":2.1136250495910645,"msg":"request completed"}
-{"level":30,"time":1775996123898,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-11","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/messages?limit=50&after=2026-04-12T12%3A06%3A45.943Z","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54256},"msg":"incoming request"}
-{"level":30,"time":1775996123899,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-11","res":{"statusCode":200},"responseTime":1.8359160423278809,"msg":"request completed"}
+{"level":30,"time":"2026-04-12T13:03:18.131Z","pid":36105,"hostname":"dingxuedeMacBook-Pro.local","cleaned":1,"msg":"Cleaned up idle sessions"}
+9:29:10 PM [tsx] change in ./src/services/ws.service.ts Restarting...
+{"level":30,"time":"2026-04-12T13:29:10.661Z","pid":36105,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:29:11.157Z","pid":58488,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:29:11.158Z","pid":58488,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:29:11.189Z","pid":58488,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+9:29:19 PM [tsx] change in ./src/services/ws.service.ts Restarting...
+{"level":30,"time":"2026-04-12T13:29:19.281Z","pid":58488,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:29:19.651Z","pid":58540,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:29:19.652Z","pid":58540,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:29:19.683Z","pid":58540,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+9:30:14 PM [tsx] change in ./src/services/ws.service.ts Restarting...
+{"level":30,"time":"2026-04-12T13:30:14.371Z","pid":58540,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:30:14.706Z","pid":58839,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:30:14.707Z","pid":58839,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:30:14.736Z","pid":58839,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+9:30:25 PM [tsx] change in ./src/services/auth.service.ts Restarting...
+{"level":30,"time":"2026-04-12T13:30:25.463Z","pid":58839,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:30:25.847Z","pid":58901,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:30:25.848Z","pid":58901,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:30:25.879Z","pid":58901,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+9:31:13 PM [tsx] change in ./src/services/process-registry.ts Restarting...
+{"level":30,"time":"2026-04-12T13:31:13.864Z","pid":58901,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:31:14.207Z","pid":59162,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:31:14.208Z","pid":59162,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:31:14.237Z","pid":59162,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+9:31:59 PM [tsx] change in ./src/services/claude-session.service.ts Restarting...
+{"level":30,"time":"2026-04-12T13:31:59.473Z","pid":59162,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:31:59.837Z","pid":59403,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:31:59.839Z","pid":59403,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:31:59.870Z","pid":59403,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+9:33:35 PM [tsx] change in ./src/services/script-runner.ts Restarting...
+{"level":30,"time":"2026-04-12T13:33:35.157Z","pid":59403,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:33:35.522Z","pid":59924,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:33:35.523Z","pid":59924,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:33:35.553Z","pid":59924,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+9:33:43 PM [tsx] change in ./src/services/task-scheduler.ts Restarting...
+{"level":30,"time":"2026-04-12T13:33:43.078Z","pid":59924,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:33:43.443Z","pid":59973,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:33:43.444Z","pid":59973,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:33:43.475Z","pid":59973,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+9:33:51 PM [tsx] change in ./src/services/workspace-isolator/crun.ts Restarting...
+{"level":30,"time":"2026-04-12T13:33:51.150Z","pid":59973,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:33:51.496Z","pid":60018,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:33:51.497Z","pid":60018,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:33:51.529Z","pid":60018,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+9:34:01 PM [tsx] change in ./src/index.ts Restarting...
+{"level":30,"time":"2026-04-12T13:34:01.120Z","pid":60018,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:34:01.524Z","pid":60077,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:34:01.526Z","pid":60077,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:34:01.562Z","pid":60077,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+9:34:11 PM [tsx] change in ./src/routes/auth.ts Restarting...
+{"level":30,"time":"2026-04-12T13:34:11.376Z","pid":60077,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:34:11.727Z","pid":60127,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:34:11.728Z","pid":60127,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:34:11.758Z","pid":60127,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+9:34:32 PM [tsx] change in ./src/config.ts Restarting...
+{"level":30,"time":"2026-04-12T13:34:32.373Z","pid":60127,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:34:32.747Z","pid":60239,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:34:32.748Z","pid":60239,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:34:32.777Z","pid":60239,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+9:36:23 PM [tsx] change in ./src/services/agent-pool.ts Restarting...
+{"level":30,"time":"2026-04-12T13:36:23.944Z","pid":60239,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:36:24.290Z","pid":60820,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:36:24.291Z","pid":60820,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:36:24.322Z","pid":60820,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+9:36:32 PM [tsx] change in ./src/services/provider-pool.ts Restarting...
+{"level":30,"time":"2026-04-12T13:36:32.776Z","pid":60820,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:36:33.114Z","pid":60869,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:36:33.115Z","pid":60869,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:36:33.146Z","pid":60869,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+9:36:49 PM [tsx] change in ./src/services/provider-pool.ts Restarting...
+{"level":30,"time":"2026-04-12T13:36:49.697Z","pid":60869,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:36:50.049Z","pid":60963,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:36:50.050Z","pid":60963,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:36:50.080Z","pid":60963,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+9:37:01 PM [tsx] change in ./src/services/provider-pool.ts Restarting...
+{"level":30,"time":"2026-04-12T13:37:01.415Z","pid":60963,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:37:01.747Z","pid":61031,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:37:01.748Z","pid":61031,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:37:01.780Z","pid":61031,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+9:37:15 PM [tsx] change in ./src/routes/messages.ts Restarting...
+{"level":30,"time":"2026-04-12T13:37:15.273Z","pid":61031,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+c{"level":30,"time":"2026-04-12T13:37:15.626Z","pid":61105,"hostname":"dingxuedeMacBook-Pro.local","msg":"Database initialized"}
+
+[SECURITY WARNING] Admin password is weak. Please change it in production.
+
+{"level":30,"time":"2026-04-12T13:37:15.627Z","pid":61105,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
+[task-scheduler] scheduler loop started
+{"level":60,"time":"2026-04-12T13:37:15.658Z","pid":61105,"hostname":"dingxuedeMacBook-Pro.local","error":{"code":"EADDRINUSE","errno":-48,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"Failed to initialize"}
+{"level":30,"time":"2026-04-12T13:37:42.388Z","pid":61105,"hostname":"dingxuedeMacBook-Pro.local","signal":"SIGTERM","msg":"Shutting down gracefully..."}
+9:37:42 PM [tsx] Previous process hasn't exited yet. Force killing...
+75996123899,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-11","res":{"statusCode":200},"responseTime":1.8359160423278809,"msg":"request completed"}
 {"level":30,"time":1775996125904,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-12","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/messages?limit=50&after=2026-04-12T12%3A06%3A45.943Z","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54260},"msg":"incoming request"}
 {"level":30,"time":1775996125906,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-12","res":{"statusCode":200},"responseTime":2.078500270843506,"msg":"request completed"}
 {"level":30,"time":1775996127909,"pid":28157,"hostname":"dingxuedeMacBook-Pro.local","reqId":"req-13","req":{"method":"GET","url":"/api/groups/a6490a3b-2290-4649-8e24-f58281ef9ae3/messages?limit=50&after=2026-04-12T12%3A06%3A45.943Z","host":"127.0.0.1:3000","remoteAddress":"127.0.0.1","remotePort":54263},"msg":"incoming request"}
@@ -334,3 +427,24 @@
 8:32:18 PM [tsx] change in ./src/services/claude-session.service.ts Restarting...
 8:32:23 PM [tsx] Process didn't exit in 5s. Force killing...
 8:33:12 PM [tsx] change in ./src/services/claude-session.service.ts Process hasn't exited. Killing process...
+9:29:10 PM [tsx] change in ./src/services/ws.service.ts Process hasn't exited. Killing process...
+9:29:19 PM [tsx] change in ./src/services/ws.service.ts Process hasn't exited. Killing process...
+9:30:14 PM [tsx] change in ./src/services/ws.service.ts Process hasn't exited. Killing process...
+9:30:25 PM [tsx] change in ./src/services/auth.service.ts Process hasn't exited. Killing process...
+9:31:13 PM [tsx] change in ./src/services/process-registry.ts Process hasn't exited. Killing process...
+9:31:59 PM [tsx] change in ./src/services/claude-session.service.ts Process hasn't exited. Killing process...
+9:33:35 PM [tsx] change in ./src/services/script-runner.ts Process hasn't exited. Killing process...
+9:33:43 PM [tsx] change in ./src/services/task-scheduler.ts Process hasn't exited. Killing process...
+9:33:51 PM [tsx] change in ./src/services/workspace-isolator/crun.ts Process hasn't exited. Killing process...
+9:34:01 PM [tsx] change in ./src/index.ts Process hasn't exited. Killing process...
+9:34:11 PM [tsx] change in ./src/routes/auth.ts Process hasn't exited. Killing process...
+9:34:32 PM [tsx] change in ./src/config.ts Process hasn't exited. Killing process...
+9:36:23 PM [tsx] change in ./src/services/agent-pool.ts Process hasn't exited. Killing process...
+9:36:32 PM [tsx] change in ./src/services/provider-pool.ts Process hasn't exited. Killing process...
+9:36:49 PM [tsx] change in ./src/services/provider-pool.ts Process hasn't exited. Killing process...
+9:37:01 PM [tsx] change in ./src/services/provider-pool.ts Process hasn't exited. Killing process...
+9:37:15 PM [tsx] change in ./src/routes/messages.ts Process hasn't exited. Killing process...
+9:37:42 PM [tsx] Previous process hasn't exited yet. Force killing...
+9:37:42 PM [tsx] Previous process hasn't exited yet. Force killing...
+9:37:47 PM [tsx] Process didn't exit in 5s. Force killing...
+9:37:47 PM [tsx] Process didn't exit in 5s. Force killing...

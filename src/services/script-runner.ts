@@ -1,7 +1,4 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
+import { spawn } from 'child_process';
 
 const MAX_SCRIPT_CONCURRENCY = 3;
 let activeScripts = 0;
@@ -20,6 +17,7 @@ export function hasScriptCapacity(): boolean {
 
 export async function runScript(
   command: string,
+  args: string[],
   cwd: string,
   timeoutMs = 60000,
 ): Promise<ScriptResult> {
@@ -30,33 +28,51 @@ export async function runScript(
   activeScripts++;
   const startTime = Date.now();
 
-  try {
-    const { stdout, stderr } = await execAsync(command, {
+  return new Promise((resolve) => {
+    const env: Record<string, string> = {
+      PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
+    };
+    // Only allow safe environment variables
+    const allowedKeys = ['HOME', 'USER', 'SHELL', 'LANG', 'TERM', 'NODE_ENV'];
+    for (const key of allowedKeys) {
+      if (process.env[key]) env[key] = process.env[key]!;
+    }
+
+    const child = spawn(command, args, {
       cwd,
       timeout: timeoutMs,
-      maxBuffer: 1024 * 1024, // 1MB
-      env: { ...process.env, PATH: process.env.PATH },
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    const durationMs = Date.now() - startTime;
-    return {
-      stdout: stdout || '',
-      stderr: stderr || '',
-      exitCode: 0,
-      durationMs,
-      timedOut: false,
-    };
-  } catch (err: any) {
-    const durationMs = Date.now() - startTime;
-    const timedOut = err.killed === true && err.signal === 'SIGTERM';
-    return {
-      stdout: err.stdout || '',
-      stderr: err.stderr || '',
-      exitCode: err.code ?? (timedOut ? -1 : 1),
-      durationMs,
-      timedOut,
-    };
-  } finally {
-    activeScripts--;
-  }
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout?.on('data', (data) => { stdout += data; });
+    child.stderr?.on('data', (data) => { stderr += data; });
+
+    child.on('error', (err) => {
+      activeScripts--;
+      resolve({
+        stdout,
+        stderr: stderr || err.message,
+        exitCode: 1,
+        durationMs: Date.now() - startTime,
+        timedOut: false,
+      });
+    });
+
+    child.on('close', (code, signal) => {
+      activeScripts--;
+      const durationMs = Date.now() - startTime;
+      const timedOut = signal === 'SIGTERM' && code === null;
+      resolve({
+        stdout: stdout || '',
+        stderr: stderr || '',
+        exitCode: code ?? (timedOut ? -1 : 1),
+        durationMs,
+        timedOut,
+      });
+    });
+  });
 }

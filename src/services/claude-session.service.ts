@@ -74,13 +74,24 @@ const sessions = new Map<string, ISessionInfo & { abortController?: AbortControl
 // Per-session async mutex to prevent concurrent queries on the same session
 const sessionLocks = new Map<string, Promise<void>>();
 
-function acquireSessionLock(sessionId: string): Promise<() => void> {
+function acquireSessionLock(sessionId: string, timeoutMs = 120000): Promise<() => void> {
   const prev = sessionLocks.get(sessionId) || Promise.resolve();
-  let resolveNext: () => void;
+  let resolveNext: (() => void) | null = null;
   const next = new Promise<void>((resolve) => {
     resolveNext = resolve;
   });
-  sessionLocks.set(sessionId, prev.then(() => next));
+
+  const timeout = new Promise<void>((resolve) => {
+    setTimeout(() => {
+      logger.warn({ sessionId, timeoutMs }, '[session] lock acquisition timed out, forcing release');
+      if (resolveNext) {
+        resolveNext();
+      }
+      resolve();
+    }, timeoutMs);
+  });
+
+  sessionLocks.set(sessionId, prev.then(() => Promise.race([next, timeout])));
   return prev.then(() => resolveNext!);
 }
 

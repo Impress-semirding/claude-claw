@@ -64,10 +64,13 @@ export function stopProcess(processId: string, force = false): boolean {
 
 export function stopWorkspace(workspaceId: string, force = false): boolean {
   const tracked = getProcessByWorkspace(workspaceId);
-  if (!tracked) {
+  if (!tracked || tracked.proc.killed || tracked.killed) {
     return false;
   }
-  return stopProcess(tracked.proc.pid?.toString() || tracked.workspaceId, force);
+
+  tracked.killed = true;
+  tracked.proc.kill(force ? 'SIGKILL' : 'SIGTERM');
+  return true;
 }
 
 export async function waitForWorkspaceExit(workspaceId: string, timeoutMs = 3000): Promise<boolean> {

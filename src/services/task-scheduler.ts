@@ -63,7 +63,10 @@ async function runScriptTask(task: ITask): Promise<void> {
   const cwd = group ? resolve(appConfig.claude.baseDir, group.folder || group.id) : process.cwd();
 
   try {
-    const result = await runScript(task.scriptCommand || '', cwd);
+    const cmdParts = (task.scriptCommand || '').trim().split(/\s+/).filter(Boolean);
+    const scriptCommand = cmdParts[0] || '';
+    const scriptArgs = cmdParts.slice(1);
+    const result = await runScript(scriptCommand, scriptArgs, cwd);
 
     let logResult: string;
     let logStatus: 'success' | 'error';

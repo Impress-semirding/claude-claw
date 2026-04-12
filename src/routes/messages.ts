@@ -32,8 +32,13 @@ function incrementPendingQuery(sessionId: string): void {
 
 function decrementPendingQuery(sessionId: string): void {
   const next = (pendingUserQueries.get(sessionId) || 0) - 1;
-  if (next <= 0) pendingUserQueries.delete(sessionId);
-  else pendingUserQueries.set(sessionId, next);
+  if (next <= 0) {
+    pendingUserQueries.delete(sessionId);
+    autoContinueCounts.delete(sessionId);
+    autoContinueLastEmpty.delete(sessionId);
+  } else {
+    pendingUserQueries.set(sessionId, next);
+  }
 }
 
 interface SendMessageResult {

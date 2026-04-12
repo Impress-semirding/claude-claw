@@ -101,7 +101,11 @@ export class CrunIsolator implements WorkspaceIsolator {
           gid: 65534,
         },
         args: [nodeBinary],
-        env: Object.entries(process.env).map(([k, v]) => `${k}=${v}`),
+        env: [
+          'PATH=/usr/local/bin:/usr/bin:/bin',
+          'HOME=/workspace',
+          'NODE_ENV=production',
+        ],
         cwd: '/workspace',
         capabilities: {
           bounding: [],

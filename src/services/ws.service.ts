@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { verifyToken } from './auth.service.js';
 import { logger } from '../logger.js';
 import type { WsMessageOut, WsMessageIn, StreamEvent } from '../types.js';
+import { groupDb } from '../db.js';
 
 export interface WsClientInfo {
   sessionId: string;
@@ -93,6 +94,21 @@ export function setupWebSocket(server: any): WebSocketServer {
   return wss;
 }
 
+function resolveGroupJid(chatJid: string): string {
+  const match = chatJid.match(/^(.+)#agent:(.+)$/);
+  return match ? match[1] : chatJid;
+}
+
+function buildChatFilter(chatJid: string): (client: WsClientInfo) => boolean {
+  const groupJid = resolveGroupJid(chatJid);
+  const group = groupDb.findById(groupJid);
+  if (!group) {
+    return () => false;
+  }
+  const members = new Set<string>([group.ownerId, ...(group.members || [])]);
+  return (client) => members.has(client.userId) || client.role === 'admin';
+}
+
 /**
  * Broadcast a WebSocket message with optional filtering.
  */
@@ -143,7 +159,7 @@ export function broadcastNewMessage(
     ...(agentId ? { agentId } : {}),
     ...(source ? { source } : {}),
   };
-  safeBroadcast(out, () => true);
+  safeBroadcast(out, buildChatFilter(chatJid));
 }
 
 export function broadcastStreamEvent(
@@ -157,7 +173,7 @@ export function broadcastStreamEvent(
     event,
     ...(agentId ? { agentId } : {}),
   };
-  safeBroadcast(out, () => true);
+  safeBroadcast(out, buildChatFilter(chatJid));
 }
 
 export function broadcastRunnerState(
@@ -167,14 +183,14 @@ export function broadcastRunnerState(
 ): void {
   safeBroadcast(
     { type: 'runner_state', chatJid, state, ...(agentId ? { agentId } : {}) },
-    () => true
+    buildChatFilter(chatJid)
   );
 }
 
 export function broadcastTyping(chatJid: string, isTyping: boolean, agentId?: string): void {
   safeBroadcast(
     { type: 'typing', chatJid, isTyping, ...(agentId ? { agentId } : {}) },
-    () => true
+    buildChatFilter(chatJid)
   );
 }
 
@@ -198,7 +214,7 @@ export function broadcastAgentStatus(
       resultSummary,
       kind,
     } as any,
-    () => true
+    buildChatFilter(chatJid)
   );
 }
 
@@ -218,7 +234,7 @@ export function broadcastToWebClients(chatJid: string, text: string): void {
   const timestamp = new Date().toISOString();
   safeBroadcast(
     { type: 'agent_reply', chatJid, text, timestamp },
-    () => true
+    buildChatFilter(chatJid)
   );
 }
 

@@ -103,7 +103,8 @@ function buildSetupStatus() {
 }
 
 function setSessionCookie(_c: any, token: string): string {
-  return `session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 24 * 60 * 60}`;
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  return `session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 24 * 60 * 60}${secure}`;
 }
 
 function clearSessionCookie(_c: any): string {

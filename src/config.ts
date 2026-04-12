@@ -91,3 +91,10 @@ import { mkdirSync } from 'fs';
     }
   }
 );
+
+// Production security checks
+if (appConfig.nodeEnv === 'production') {
+  if (!process.env.JWT_SECRET || appConfig.jwtSecret === 'change-this-in-production') {
+    throw new Error('JWT_SECRET environment variable must be set in production');
+  }
+}

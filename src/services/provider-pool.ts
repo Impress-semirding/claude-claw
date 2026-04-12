@@ -13,7 +13,7 @@
  * excludes them from selection until recoveryIntervalMs has passed.
  */
 
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, statSync } from 'fs';
 import { resolve } from 'path';
 import { appConfig } from '../config.js';
 
@@ -74,12 +74,46 @@ function readJsonConfig<T>(name: string, fallback: T): T {
   }
 }
 
+interface CacheEntry<T> {
+  mtime: number;
+  data: T;
+}
+
+let cachedProviders: CacheEntry<ProviderRecord[]> | null = null;
+let cachedSecrets: CacheEntry<Record<string, ProviderSecretRecord>> | null = null;
+let cachedBalancing: CacheEntry<BalancingConfig> | null = null;
+
 function readProviders(): ProviderRecord[] {
-  return readJsonConfig('claude-providers', []);
+  const p = configPath('claude-providers');
+  const mtime = existsSync(p) ? statSync(p).mtimeMs : 0;
+  if (cachedProviders && cachedProviders.mtime >= mtime) {
+    return cachedProviders.data;
+  }
+  const data = readJsonConfig('claude-providers', []);
+  cachedProviders = { mtime, data };
+  return data;
 }
 
 function readSecrets(): Record<string, ProviderSecretRecord> {
-  return readJsonConfig('claude-secrets', {});
+  const p = configPath('claude-secrets');
+  const mtime = existsSync(p) ? statSync(p).mtimeMs : 0;
+  if (cachedSecrets && cachedSecrets.mtime >= mtime) {
+    return cachedSecrets.data;
+  }
+  const data = readJsonConfig('claude-secrets', {});
+  cachedSecrets = { mtime, data };
+  return data;
+}
+
+function readBalancing(): BalancingConfig {
+  const p = configPath('claude-balancing');
+  const mtime = existsSync(p) ? statSync(p).mtimeMs : 0;
+  if (cachedBalancing && cachedBalancing.mtime >= mtime) {
+    return cachedBalancing.data;
+  }
+  const data = readJsonConfig('claude-balancing', getDefaultBalancing());
+  cachedBalancing = { mtime, data };
+  return data;
 }
 
 function getDefaultBalancing(): BalancingConfig {
@@ -179,7 +213,7 @@ class ProviderPool {
   private getCandidates(excludeIds?: string[]): Array<{ provider: ProviderRecord; secret: ProviderSecretRecord }> {
     const providers = readProviders();
     const secrets = readSecrets();
-    const balancing = readJsonConfig('claude-balancing', getDefaultBalancing());
+    const balancing = readBalancing();
 
     const enabled = providers.filter((p) => p.enabled);
     const candidates: Array<{ provider: ProviderRecord; secret: ProviderSecretRecord }> = [];
@@ -212,7 +246,7 @@ class ProviderPool {
     const candidates = this.getCandidates(excludeIds);
     if (candidates.length === 0) return undefined;
 
-    const balancing = readJsonConfig('claude-balancing', getDefaultBalancing());
+    const balancing = readBalancing();
 
     let selected: { provider: ProviderRecord; secret: ProviderSecretRecord } | undefined;
 
@@ -250,7 +284,7 @@ class ProviderPool {
   }
 
   reportError(providerId: string): void {
-    const balancing = readJsonConfig('claude-balancing', getDefaultBalancing());
+    const balancing = readBalancing();
     const health = initHealth(providerId);
     health.consecutiveErrors += 1;
     health.lastErrorAt = Date.now();
@@ -260,7 +294,7 @@ class ProviderPool {
   }
 
   reportLatency(providerId: string, latencyMs: number): void {
-    const balancing = readJsonConfig('claude-balancing', getDefaultBalancing());
+    const balancing = readBalancing();
     let samples = latencyHistory.get(providerId);
     if (!samples) {
       samples = [];
@@ -276,7 +310,7 @@ class ProviderPool {
   }
 
   reportSlow(providerId: string): void {
-    const balancing = readJsonConfig('claude-balancing', getDefaultBalancing());
+    const balancing = readBalancing();
     const health = initHealth(providerId);
     health.consecutiveSlows += 1;
     if (health.consecutiveSlows >= balancing.slowThreshold) {

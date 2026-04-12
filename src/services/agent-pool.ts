@@ -7,7 +7,10 @@ interface QueuedItem {
   sessionId: string;
   resolve: () => void;
   reject: (reason: Error) => void;
+  timeoutId?: NodeJS.Timeout;
 }
+
+const MAX_QUEUE_SIZE = 100;
 
 class AgentPool {
   private slots = POOL_SIZE;
@@ -34,11 +37,14 @@ class AgentPool {
       this.active.set(sessionId, undefined);
       return;
     }
+    if (this.queue.length >= MAX_QUEUE_SIZE) {
+      throw new Error('Agent pool queue is full');
+    }
     return new Promise((resolve, reject) => {
       const item: QueuedItem = { sessionId, resolve, reject };
       this.queue.push(item);
       if (timeoutMs > 0) {
-        setTimeout(() => {
+        item.timeoutId = setTimeout(() => {
           const idx = this.queue.indexOf(item);
           if (idx !== -1) {
             this.queue.splice(idx, 1);
@@ -64,6 +70,10 @@ class AgentPool {
     this.active.delete(sessionId);
     const next = this.queue.shift();
     if (next) {
+      if (next.timeoutId) {
+        clearTimeout(next.timeoutId);
+        next.timeoutId = undefined;
+      }
       this.active.set(next.sessionId, undefined);
       next.resolve();
     }
