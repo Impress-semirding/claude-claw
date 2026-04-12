@@ -23,6 +23,8 @@ const db: Database.Database = new Database(dbPath);
 
 // Enable WAL mode for better concurrency
 db.pragma('journal_mode = WAL');
+// Allow concurrent writers to wait up to 5s instead of immediately throwing SQLITE_BUSY
+db.pragma('busy_timeout = 5000');
 
 // Schema version for migrations
 const SCHEMA_VERSION = 7;

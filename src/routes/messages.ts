@@ -24,6 +24,17 @@ import { ClaudeAgent, AgentEnvironment } from '../services/agent.js';
 const runningQueries = new Map<string, boolean>();
 const autoContinueCounts = new Map<string, number>();
 const autoContinueLastEmpty = new Map<string, boolean>();
+const pendingUserQueries = new Map<string, number>();
+
+function incrementPendingQuery(sessionId: string): void {
+  pendingUserQueries.set(sessionId, (pendingUserQueries.get(sessionId) || 0) + 1);
+}
+
+function decrementPendingQuery(sessionId: string): void {
+  const next = (pendingUserQueries.get(sessionId) || 0) - 1;
+  if (next <= 0) pendingUserQueries.delete(sessionId);
+  else pendingUserQueries.set(sessionId, next);
+}
 
 interface SendMessageResult {
   ok: true;
@@ -128,11 +139,11 @@ async function handleMessageSend(
   };
 
   // Reset auto-continue counter for user-initiated messages
-  const queryKey = agentId ? `${groupJid}:${agentId}` : groupJid;
-  autoContinueCounts.delete(queryKey);
+  autoContinueCounts.delete(session.sessionId);
 
   // Fire-and-forget the agent query (broadcast with original chatJid for virtual JID routing)
-  runAgentQuery(agent, env, session.sessionId, content, enabledMcpServers, chatJid, agentId);
+  incrementPendingQuery(session.sessionId);
+  runAgentQuery(agent, env, session.sessionId, content, enabledMcpServers, chatJid, agentId, true);
 
   return { ok: true, messageId, timestamp };
 }
@@ -144,14 +155,11 @@ export async function runAgentQuery(
   content: string,
   mcpServers: Record<string, unknown>,
   chatJid: string,
-  agentId?: string
+  agentId?: string,
+  isUserQuery = false
 ): Promise<import('../services/agent.js').AgentQueryResult | undefined> {
-  const queryKey = agentId ? `${chatJid}:${agentId}` : chatJid;
-  if (runningQueries.get(queryKey)) {
-    return;
-  }
 
-  runningQueries.set(queryKey, true);
+  runningQueries.set(sessionId, true);
   broadcastRunnerState(chatJid, 'running', agentId);
   broadcastTyping(chatJid, true, agentId);
 
@@ -282,19 +290,33 @@ export async function runAgentQuery(
       turnId,
     }, agentId);
   } finally {
-    runningQueries.delete(queryKey);
+    runningQueries.delete(sessionId);
     broadcastRunnerState(chatJid, 'idle', agentId);
     broadcastTyping(chatJid, false, agentId);
 
+    if (isUserQuery) {
+      decrementPendingQuery(sessionId);
+    }
+
     if (result?.hadCompaction) {
-      logger.info('[messages] compaction happened, triggering memory flush then auto-continue');
-      try {
-        const systemPrompt = await agent.buildSystemPrompt(env);
-        await runMemoryFlush(env.userId, chatJid, sessionId, mcpServers, systemPrompt);
-        await maybeAutoContinue(agent, env, sessionId, mcpServers, chatJid, agentId);
-      } catch (err) {
-        logger.error({ err }, '[messages] auto-continue chain error');
-      }
+      // Fire-and-forget so new user messages can acquire the session lock first
+      Promise.resolve().then(async () => {
+        if (pendingUserQueries.has(sessionId)) {
+          logger.info({ sessionId }, '[messages] skipping auto-continue because pending user queries exist');
+          return;
+        }
+        try {
+          const systemPrompt = await agent.buildSystemPrompt(env);
+          await runMemoryFlush(env.userId, chatJid, sessionId, mcpServers, systemPrompt);
+          if (pendingUserQueries.has(sessionId)) {
+            logger.info({ sessionId }, '[messages] skipping auto-continue because user queries arrived during memory flush');
+            return;
+          }
+          await maybeAutoContinue(agent, env, sessionId, mcpServers, chatJid, agentId);
+        } catch (err) {
+          logger.error({ err }, '[messages] auto-continue chain error');
+        }
+      });
     }
   }
   return result;
@@ -308,22 +330,27 @@ async function maybeAutoContinue(
   chatJid: string,
   agentId?: string
 ): Promise<void> {
-  const key = agentId ? `${chatJid}:${agentId}` : chatJid;
-  const count = autoContinueCounts.get(key) || 0;
+  if (pendingUserQueries.has(sessionId)) {
+    logger.info({ sessionId }, '[messages] canceling auto-continue because a user query arrived');
+    autoContinueCounts.delete(sessionId);
+    autoContinueLastEmpty.delete(sessionId);
+    return;
+  }
+  const count = autoContinueCounts.get(sessionId) || 0;
   if (count >= 3) {
-    logger.info({ key }, '[messages] auto-continue limit reached');
-    autoContinueCounts.delete(key);
-    autoContinueLastEmpty.delete(key);
+    logger.info({ sessionId }, '[messages] auto-continue limit reached');
+    autoContinueCounts.delete(sessionId);
+    autoContinueLastEmpty.delete(sessionId);
     return;
   }
-  if (autoContinueLastEmpty.get(key)) {
-    logger.info({ key }, '[messages] last auto-continue produced no text, stopping chain');
-    autoContinueCounts.delete(key);
-    autoContinueLastEmpty.delete(key);
+  if (autoContinueLastEmpty.get(sessionId)) {
+    logger.info({ sessionId }, '[messages] last auto-continue produced no text, stopping chain');
+    autoContinueCounts.delete(sessionId);
+    autoContinueLastEmpty.delete(sessionId);
     return;
   }
-  autoContinueCounts.set(key, count + 1);
-  logger.info({ key, count: count + 1 }, '[messages] auto-continue triggered');
+  autoContinueCounts.set(sessionId, count + 1);
+  logger.info({ sessionId, count: count + 1 }, '[messages] auto-continue triggered');
 
   broadcastStreamEvent(chatJid, {
     eventType: 'status',
@@ -334,7 +361,7 @@ async function maybeAutoContinue(
 
   const result = await runAgentQuery(agent, env, sessionId, '继续', mcpServers, chatJid, agentId);
   if (!result?.assistantText.trim()) {
-    autoContinueLastEmpty.set(key, true);
+    autoContinueLastEmpty.set(sessionId, true);
   }
 }
 
@@ -349,7 +376,7 @@ async function runMemoryFlush(
   mcpServers: Record<string, unknown>,
   systemPrompt: string
 ): Promise<void> {
-  const flushKey = `flush:${chatJid}`;
+  const flushKey = `flush:${sessionId}`;
   if (runningQueries.get(flushKey)) {
     logger.info('[messages] memory flush already running, skipping');
     return;

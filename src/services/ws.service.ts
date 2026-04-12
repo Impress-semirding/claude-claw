@@ -103,9 +103,10 @@ export function safeBroadcast(
   const data = JSON.stringify(msg);
   let sent = 0;
   let skipped = 0;
+  const toDelete: WebSocket[] = [];
   for (const [client, clientInfo] of wsClients) {
     if (client.readyState !== WebSocket.OPEN) {
-      wsClients.delete(client);
+      toDelete.push(client);
       continue;
     }
     if (filter && !filter(clientInfo)) {
@@ -116,8 +117,11 @@ export function safeBroadcast(
       client.send(data);
       sent++;
     } catch {
-      wsClients.delete(client);
+      toDelete.push(client);
     }
+  }
+  for (const client of toDelete) {
+    wsClients.delete(client);
   }
   if (msg.type === 'new_message') {
     logger.info({ chatJid: msg.chatJid, messageId: (msg as any).message?.id, sender: (msg as any).message?.sender, sent, skipped, totalClients: wsClients.size }, '[ws] broadcast new_message');

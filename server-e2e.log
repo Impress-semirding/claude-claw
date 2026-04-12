@@ -9,8 +9,11 @@
 {"level":30,"time":"2026-04-11T06:45:58.698Z","pid":65557,"hostname":"dingxuedeMacBook-Pro.local","msg":"Sessions loaded from database"}
 [task-scheduler] scheduler loop started
 {"level":30,"time":1775889958731,"pid":65557,"hostname":"dingxuedeMacBook-Pro.local","msg":"Server listening at http://127.0.0.1:3000"}
-{"level":30,"time":"2026-04-11T06:45:58.732Z","pid":65557,"hostname":"dingxuedeMacBook-Pro.local","msg":"🚀 Server running on http://localhost:3000"}
-{"level":30,"time":"2026-04-11T06:45:58.732Z","pid":65557,"hostname":"dingxuedeMacBook-Pro.local","msg":"📁 Data directory: /Users/dingxue/Documents/claude/claw/data"}
+{"level":30,"time":"2026-04-11T06:45:58.732Z","pid":65557,"hostname":"dingxuedeMacBoo[daily-summary] running daily heartbeat generation...
+[daily-summary] done, processed 28 users
+[daily-summary] running daily heartbeat generation...
+[daily-summary] done, processed 28 users
+y: /Users/dingxue/Documents/claude/claw/data"}
 {"level":30,"time":"2026-04-11T06:45:58.732Z","pid":65557,"hostname":"dingxuedeMacBook-Pro.local","msg":"🔧 Claude base directory: /Users/dingxue/Documents/claude/claw/data/sessions"}
 {"level":30,"time":1775889958732,"pid":65557,"hostname":"dingxuedeMacBook-Pro.local","msg":"Server listening at http://192.168.8.57:3000"}
 {"level":30,"time":1775889958732,"pid":65557,"hostname":"dingxuedeMacBook-Pro.local","msg":"Server listening at http://10.211.55.2:3000"}

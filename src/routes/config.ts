@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware, adminMiddleware } from './auth.js';
 import { appConfig } from '../config.js';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'fs';
 import { resolve } from 'path';
 import { randomUUID } from 'crypto';
 import { getProviderHealth, resetProviderHealth } from '../services/provider-pool.js';
@@ -25,8 +25,24 @@ function readConfig(name: string, fallback: any = {}) {
   return fallback;
 }
 
-function writeConfig(name: string, data: any) {
-  writeFileSync(configPath(name), JSON.stringify(data, null, 2));
+let configWriteLock = Promise.resolve();
+
+async function writeConfigLocked(name: string, data: any): Promise<void> {
+  const prev = configWriteLock;
+  let release: () => void;
+  const next = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  configWriteLock = prev.then(() => next);
+  await prev;
+  try {
+    const p = configPath(name);
+    const tmp = p + '.tmp';
+    writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
+    renameSync(tmp, p);
+  } finally {
+    release!();
+  }
 }
 
 // ─── Claude Providers persistence ──────────────────────────────
@@ -99,16 +115,16 @@ function readProviders(): ProviderRecord[] {
   return readConfig('claude-providers', []);
 }
 
-function writeProviders(providers: ProviderRecord[]) {
-  writeConfig('claude-providers', providers);
+async function writeProviders(providers: ProviderRecord[]) {
+  await writeConfigLocked('claude-providers', providers);
 }
 
 function readSecrets(): Record<string, ProviderSecretRecord> {
   return readConfig('claude-secrets', {});
 }
 
-function writeSecrets(secrets: Record<string, ProviderSecretRecord>) {
-  writeConfig('claude-secrets', secrets);
+async function writeSecrets(secrets: Record<string, ProviderSecretRecord>) {
+  await writeConfigLocked('claude-secrets', secrets);
 }
 
 function maskSecret(value: string | undefined | null): string | null {
@@ -162,7 +178,7 @@ export default async function configRoutes(fastify: FastifyInstance) {
     try {
       const body = request.body as any;
       const current = readConfig('appearance', {});
-      writeConfig('appearance', { ...current, ...body });
+      await writeConfigLocked('appearance', { ...current, ...body });
       return reply.send({ success: true });
     } catch (error) {
       return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to update config' });
@@ -184,7 +200,7 @@ export default async function configRoutes(fastify: FastifyInstance) {
     try {
       const body = request.body as any;
       const current = readConfig('system', {});
-      writeConfig('system', { ...current, ...body });
+      await writeConfigLocked('system', { ...current, ...body });
       return reply.send({ ...getDefaultSystemSettings(), ...readConfig('system', {}) });
     } catch (error) {
       return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to update config' });
@@ -311,8 +327,8 @@ export default async function configRoutes(fastify: FastifyInstance) {
       providers.push(record);
       secrets[id] = secret;
 
-      writeProviders(providers);
-      writeSecrets(secrets);
+      await writeProviders(providers);
+      await writeSecrets(secrets);
       getProviderHealth(id); // init health
 
       return reply.status(201).send({ success: true, id });
@@ -341,7 +357,7 @@ export default async function configRoutes(fastify: FastifyInstance) {
       p.updatedAt = new Date().toISOString();
 
       providers[idx] = p;
-      writeProviders(providers);
+      await writeProviders(providers);
 
       return reply.send({ success: true });
     } catch (error) {
@@ -356,8 +372,8 @@ export default async function configRoutes(fastify: FastifyInstance) {
       const providers = readProviders().filter((p) => p.id !== id);
       const secrets = readSecrets();
       delete secrets[id];
-      writeProviders(providers);
-      writeSecrets(secrets);
+      await writeProviders(providers);
+      await writeSecrets(secrets);
       return reply.send({ success: true });
     } catch (error) {
       return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to delete provider' });
@@ -373,7 +389,7 @@ export default async function configRoutes(fastify: FastifyInstance) {
       if (idx === -1) return reply.status(404).send({ error: 'Provider not found' });
       providers[idx].enabled = !providers[idx].enabled;
       providers[idx].updatedAt = new Date().toISOString();
-      writeProviders(providers);
+      await writeProviders(providers);
       return reply.send({ success: true, enabled: providers[idx].enabled });
     } catch (error) {
       return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to toggle provider' });
@@ -485,7 +501,7 @@ export default async function configRoutes(fastify: FastifyInstance) {
     try {
       const body = request.body as any;
       const current = readConfig('claude-balancing', getDefaultBalancing());
-      writeConfig('claude-balancing', { ...current, ...body });
+      await writeConfigLocked('claude-balancing', { ...current, ...body });
       return reply.send({ success: true });
     } catch (error) {
       return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to update balancing' });
@@ -526,7 +542,7 @@ export default async function configRoutes(fastify: FastifyInstance) {
   fastify.put('/claude/custom-env', { preHandler: [authMiddleware, adminMiddleware] }, async (request, reply) => {
     try {
       const body = request.body as any;
-      writeConfig('claude-custom-env', body);
+      await writeConfigLocked('claude-custom-env', body);
       return reply.send({ success: true });
     } catch (error) {
       return reply.status(500).send({ error: error instanceof Error ? error.message : 'Failed to update custom env' });
@@ -656,7 +672,7 @@ export default async function configRoutes(fastify: FastifyInstance) {
       const merged = processSecrets(provider, existing, body);
       merged.updatedAt = Date.now();
       im[provider] = merged;
-      writeConfig('im-channels', im);
+      await writeConfigLocked('im-channels', im);
       return reply.send(normalizeImConfig(provider, merged));
     });
   }
@@ -700,7 +716,7 @@ export default async function configRoutes(fastify: FastifyInstance) {
       im.wechat.botTokenMasked = null;
       im.wechat._botToken = null;
       im.wechat.updatedAt = Date.now();
-      writeConfig('im-channels', im);
+      await writeConfigLocked('im-channels', im);
     }
     return reply.send({ success: true });
   });
@@ -743,7 +759,7 @@ export default async function configRoutes(fastify: FastifyInstance) {
       const body = request.body as any;
       const current = readConfig('system', {});
       const updatedAt = new Date().toISOString();
-      writeConfig('system', {
+      await writeConfigLocked('system', {
         ...current,
         allowRegistration: body.allowRegistration,
         requireInviteCode: body.requireInviteCode,

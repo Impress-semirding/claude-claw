@@ -6,6 +6,7 @@ const POOL_SIZE = Number(process.env.CLAW_AGENT_POOL_SIZE) || Math.min(os.availa
 interface QueuedItem {
   sessionId: string;
   resolve: () => void;
+  reject: (reason: Error) => void;
 }
 
 class AgentPool {
@@ -25,7 +26,7 @@ class AgentPool {
     return this.queue.length;
   }
 
-  async acquire(sessionId: string): Promise<void> {
+  async acquire(sessionId: string, timeoutMs = 30000): Promise<void> {
     if (this.active.has(sessionId)) {
       return;
     }
@@ -33,8 +34,18 @@ class AgentPool {
       this.active.set(sessionId, undefined);
       return;
     }
-    return new Promise((resolve) => {
-      this.queue.push({ sessionId, resolve });
+    return new Promise((resolve, reject) => {
+      const item: QueuedItem = { sessionId, resolve, reject };
+      this.queue.push(item);
+      if (timeoutMs > 0) {
+        setTimeout(() => {
+          const idx = this.queue.indexOf(item);
+          if (idx !== -1) {
+            this.queue.splice(idx, 1);
+            reject(new Error(`Agent pool acquire timeout after ${timeoutMs}ms`));
+          }
+        }, timeoutMs);
+      }
     });
   }
 

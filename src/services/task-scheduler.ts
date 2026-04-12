@@ -327,6 +327,7 @@ export function startSchedulerLoop(): void {
 
       for (const task of dueTasks) {
         if (runningTaskIds.has(task.id)) continue;
+        runningTaskIds.add(task.id);
 
         console.log('[task-scheduler] running due task', task.id, task.name);
         runTask(task).catch((err) => {
@@ -349,6 +350,7 @@ export function triggerTaskNow(taskId: string): { success: boolean; error?: stri
   if (!task.enabled) return { success: false, error: 'Task is disabled' };
   if (runningTaskIds.has(taskId)) return { success: false, error: 'Task is already running' };
 
+  runningTaskIds.add(taskId);
   runTask(task, { manualRun: true }).catch((err) => {
     console.error('[task-scheduler] manual run error', taskId, err);
   });

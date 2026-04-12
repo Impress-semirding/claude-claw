@@ -7,7 +7,7 @@
  */
 
 import { tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
-import { appendFileSync, mkdirSync, readdirSync, readFileSync, existsSync, statSync } from 'fs';
+import { mkdirSync, readdirSync, readFileSync, existsSync, statSync, openSync, fstatSync, writeSync, closeSync } from 'fs';
 import { resolve, join } from 'path';
 import type { AgentEnvironment } from './agent.js';
 import { taskDb } from '../db.js';
@@ -56,17 +56,21 @@ export function buildClawMcpServer(env: AgentEnvironment): ClawMcpServerTools {
       const timestamp = new Date().toLocaleString('zh-CN');
       const entry = `## ${timestamp}\n\n${args.content}\n\n`;
 
-      if (Buffer.byteLength(entry, 'utf-8') > MAX_MEMORY_APPEND_SIZE) {
+      const entryBuf = Buffer.from(entry, 'utf-8');
+      if (entryBuf.byteLength > MAX_MEMORY_APPEND_SIZE) {
         return { error: 'Append entry exceeds 1 MB limit.' };
       }
-      if (existsSync(filePath)) {
-        const stats = statSync(filePath);
+
+      const fd = openSync(filePath, 'a');
+      try {
+        const stats = fstatSync(fd);
         if (stats.size > MAX_MEMORY_FILE_SIZE) {
           return { error: `Memory file ${today}.md exceeds 5 MB limit. Please create a new date file or archive old entries.` };
         }
+        writeSync(fd, entryBuf);
+      } finally {
+        closeSync(fd);
       }
-
-      appendFileSync(filePath, entry, 'utf-8');
       return { success: true, file: `memory/${today}.md`, timestamp };
     }
   );

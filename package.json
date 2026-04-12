@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc && node --input-type=module -e \"import fs from 'fs'; if (!fs.existsSync('./dist/agent-runner/index.js')) { console.error('Missing dist/agent-runner/index.js'); process.exit(1); } console.log('Runner build OK');\"",
+    "build": "tsc && node --input-type=module -e \"import fs from 'fs'; import path from 'path'; if (!fs.existsSync('./dist/agent-runner-v2/index.js')) { console.error('Missing dist/agent-runner-v2/index.js'); process.exit(1); } const srcPrompts = 'src/agent-runner-v2/prompts'; const dstPrompts = 'dist/agent-runner-v2/prompts'; if (fs.existsSync(srcPrompts)) { fs.cpSync(srcPrompts, dstPrompts, { recursive: true, force: true }); } console.log('Runner build OK');\"",
     "start": "node dist/index.js",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts"
@@ -15,6 +15,7 @@
     "axios": "^1.8.4",
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^12.0.0",
+    "cron-parser": "^5.1.1",
     "dotenv": "^16.4.7",
     "form-data": "^4.0.2",
     "glob": "^11.0.1",

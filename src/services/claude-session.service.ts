@@ -71,6 +71,19 @@ function buildCanUseTool(
 // Session registry for runtime tracking
 const sessions = new Map<string, ISessionInfo & { abortController?: AbortController }>();
 
+// Per-session async mutex to prevent concurrent queries on the same session
+const sessionLocks = new Map<string, Promise<void>>();
+
+function acquireSessionLock(sessionId: string): Promise<() => void> {
+  const prev = sessionLocks.get(sessionId) || Promise.resolve();
+  let resolveNext: () => void;
+  const next = new Promise<void>((resolve) => {
+    resolveNext = resolve;
+  });
+  sessionLocks.set(sessionId, prev.then(() => next));
+  return prev.then(() => resolveNext!);
+}
+
 // Generate session key
 function sessionKey(userId: string, workspace: string, sessionId: string): string {
   return `${userId}:${workspace}:${sessionId}`;
@@ -254,15 +267,22 @@ export function destroySession(userId: string, workspace: string, sessionId: str
   try {
     const absConfigDir = resolve(appConfig.claude.baseDir, session.configDir);
     const absTmpDir = resolve(appConfig.claude.baseDir, session.tmpDir);
+    const absIpcDir = resolve(appConfig.dataDir, 'ipc', sessionId);
     if (existsSync(absConfigDir)) {
       rmSync(absConfigDir, { recursive: true, force: true });
     }
     if (existsSync(absTmpDir)) {
       rmSync(absTmpDir, { recursive: true, force: true });
     }
+    if (existsSync(absIpcDir)) {
+      rmSync(absIpcDir, { recursive: true, force: true });
+    }
   } catch (error) {
     logger.warn({ error }, 'Failed to cleanup session directory');
   }
+
+  // Release any lingering session lock
+  sessionLocks.delete(sessionId);
 
   return true;
 }
@@ -366,8 +386,10 @@ export async function* querySession({
     disallowedTools?: string[];
   };
 }): AsyncGenerator<IStreamEvent> {
-  const key = sessionKey(userId, workspace, sessionId);
-  let session = sessions.get(key);
+  const releaseLock = await acquireSessionLock(sessionId);
+  try {
+    const key = sessionKey(userId, workspace, sessionId);
+    let session = sessions.get(key);
 
   // Auto-create session if not exists
   if (!session) {
@@ -440,15 +462,16 @@ export async function* querySession({
   const isolator = getIsolator();
   await isolator.prepareWorkspace(sessionId, userId);
 
-  // Build environment variables
+  // Build environment variables (whitelist only – never leak full host env to runner)
   const env: Record<string, string> = {
-    ...process.env,
     CLAUDE_CONFIG_DIR: absConfigDir,
     CLAUDE_CODE_TMPDIR: absTmpDir,
     CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR: '1',
     HOME: absConfigDir,
     MAX_MCP_OUTPUT_TOKENS: '50000',
     ANTHROPIC_BASE_URL: baseUrl,
+    PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
+    NODE_OPTIONS: '--max-old-space-size=4096',
   };
 
   // Pass authentication from provider secrets
@@ -596,6 +619,8 @@ process.stdin.on('end', () => {
   // Add user global dir as additional directory so the preset picks up CLAUDE.md from there
   const userGlobalDir = resolve(appConfig.dataDir, 'groups', 'user-global', userId);
   mkdirSync(userGlobalDir, { recursive: true });
+  const memoryDir = resolve(appConfig.dataDir, 'memory', userId);
+  mkdirSync(memoryDir, { recursive: true });
   options.additionalDirectories = [userGlobalDir];
 
   // Resume SDK session unless compacting
@@ -641,8 +666,12 @@ process.stdin.on('end', () => {
   }
 
   // Build runner path with runtime detection (dist first, then dev fallback)
-  const distRunnerPath = resolve(process.cwd(), 'dist/agent-runner/index.js');
-  const devRunnerPath = resolve(process.cwd(), 'src/agent-runner/index.ts');
+  const distRunnerPath = resolve(process.cwd(), 'dist/agent-runner-v2/index.js');
+  const devRunnerPath = resolve(process.cwd(), 'src/agent-runner-v2/index.ts');
+
+  if (appConfig.nodeEnv === 'production' && !existsSync(distRunnerPath)) {
+    throw new Error('Production runner not found at dist/agent-runner-v2/index.js. Please run npm run build.');
+  }
   const runnerPath = existsSync(distRunnerPath) ? distRunnerPath : devRunnerPath;
 
   // Ensure IPC directory exists for mid-query injection (monitored by runner)
@@ -666,7 +695,7 @@ process.stdin.on('end', () => {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       logger.trace({ sessionId, attempt }, '[claude-session] acquiring pool slot attempt');
-      await agentPool.acquire(sessionId);
+      await agentPool.acquire(sessionId, 30000);
 
       const isTs = runnerPath.endsWith('.ts');
       const command = isTs ? resolve(process.cwd(), 'node_modules/.bin/tsx') : 'node';
@@ -676,16 +705,21 @@ process.stdin.on('end', () => {
       const runnerLogPath = resolve(appConfig.dataDir, 'logs', `runner-${sessionId}.log`);
       runnerLogStream = createWriteStream(runnerLogPath, { flags: 'a' });
 
-      const runnerEnv = {
-        ...process.env,
+      const runnerEnv: Record<string, string> = {
         ...env,
-        CLAUDE_CONFIG_DIR: absConfigDir,
-        NODE_OPTIONS: '--max-old-space-size=4096',
+        HAPPYCLAW_WORKSPACE_GROUP: absWorkDir,
+        HAPPYCLAW_WORKSPACE_GLOBAL: userGlobalDir,
+        HAPPYCLAW_WORKSPACE_MEMORY: memoryDir,
+        HAPPYCLAW_WORKSPACE_IPC: resolve(appConfig.dataDir, 'ipc', sessionId),
       };
-      proc = spawn(command, [runnerPath], {
+      proc = isolator.spawn({
+        command,
+        args: [runnerPath],
         cwd: process.cwd(),
         env: runnerEnv,
-        stdio: ['pipe', 'pipe', 'pipe'],
+        signal: abortController.signal,
+        workspaceId: sessionId,
+        userId,
       });
 
       agentPool.bind(sessionId, proc);
@@ -720,6 +754,7 @@ process.stdin.on('end', () => {
           workspaceDir: absWorkDir,
           userGlobalPath: resolve(appConfig.dataDir, 'groups', 'user-global', userId, 'CLAUDE.md'),
           groupConfig,
+          isHome: true,
         },
       });
 
@@ -755,6 +790,16 @@ process.stdin.on('end', () => {
         }, 500);
       });
 
+      // Startup heartbeat: if runner produces no stderr within 5s, it likely hung during init
+      let startupHeartbeatReceived = false;
+      const STARTUP_HEARTBEAT_MS = 5000;
+      const startupHeartbeatTimer = setTimeout(() => {
+        if (!startupHeartbeatReceived) {
+          logger.error({ sessionId }, '[claude-session] startup heartbeat timeout, killing runner');
+          try { proc!.kill('SIGKILL'); } catch {}
+        }
+      }, STARTUP_HEARTBEAT_MS);
+
       // --- Stream consumption ---
       const processor = onStreamEvent ? new ClawStreamProcessor(onStreamEvent, turnId || `turn-${Date.now()}`) : null;
       if (!proc.stdout) {
@@ -771,6 +816,10 @@ process.stdin.on('end', () => {
 
       let stderrBuffer = '';
       proc.stderr?.on('data', (data: Buffer) => {
+        if (!startupHeartbeatReceived) {
+          startupHeartbeatReceived = true;
+          clearTimeout(startupHeartbeatTimer);
+        }
         if (runnerLogStream) {
           runnerLogStream.write(data);
         }
@@ -782,48 +831,57 @@ process.stdin.on('end', () => {
           const trimmed = line.trim();
           if (!trimmed) continue;
 
-          if (trimmed.startsWith('{') && trimmed.includes('"__mcp__"')) {
+          // Forward structured JSON logs from runner
+          if (trimmed.startsWith('{')) {
             try {
-              const mcp = JSON.parse(trimmed);
-              if (mcp.__mcp__ && mcp.type === 'send_message') {
-                const msgId = uuidv4();
-                const ts = new Date().toISOString();
-                messageDb.create({
-                  id: msgId,
-                  sessionId,
-                  userId: '__assistant__',
-                  role: 'assistant',
-                  content: mcp.content,
-                  metadata: { senderName: 'Claude', timestamp: ts, sourceKind: 'mcp_send_message' },
-                });
-                broadcastNewMessage(mcp.chatJid, {
-                  id: msgId,
-                  chat_jid: mcp.chatJid,
-                  sender: '__assistant__',
-                  sender_name: 'Claude',
-                  content: mcp.content,
-                  timestamp: ts,
-                  is_from_me: true,
-                  sdk_message_uuid: null,
-                  source_kind: 'mcp_send_message',
-                });
-              } else if (mcp.__mcp__ && mcp.type === 'schedule_task') {
-                const taskId = uuidv4();
-                taskDb.create({
-                  id: taskId,
-                  name: mcp.name,
-                  description: '',
-                  cron: mcp.cron,
-                  prompt: mcp.prompt,
-                  groupId: mcp.chatJid,
-                  enabled: true,
-                });
-                logger.info({ sessionId, taskId }, '[claude-session] scheduled task via MCP');
+              const logMsg = JSON.parse(trimmed);
+              if (logMsg.source === 'agent-runner' && typeof logMsg.msg === 'string') {
+                const logLevel = ['trace', 'debug', 'info', 'warn', 'error'].includes(logMsg.level) ? logMsg.level : 'info';
+                (logger as any)[logLevel]({ sessionId, ...logMsg }, '[agent-runner]');
+                continue;
               }
-            } catch (e) {
-              logger.error({ sessionId, line: trimmed.slice(0, 200) }, '[claude-session] failed to parse MCP stderr line');
+              if (logMsg.__mcp__) {
+                const mcp = logMsg;
+                if (mcp.type === 'send_message') {
+                  const msgId = uuidv4();
+                  const ts = new Date().toISOString();
+                  messageDb.create({
+                    id: msgId,
+                    sessionId,
+                    userId: '__assistant__',
+                    role: 'assistant',
+                    content: mcp.content,
+                    metadata: { senderName: 'Claude', timestamp: ts, sourceKind: 'mcp_send_message' },
+                  });
+                  broadcastNewMessage(mcp.chatJid, {
+                    id: msgId,
+                    chat_jid: mcp.chatJid,
+                    sender: '__assistant__',
+                    sender_name: 'Claude',
+                    content: mcp.content,
+                    timestamp: ts,
+                    is_from_me: true,
+                    sdk_message_uuid: null,
+                    source_kind: 'mcp_send_message',
+                  });
+                } else if (mcp.type === 'schedule_task') {
+                  const taskId = uuidv4();
+                  taskDb.create({
+                    id: taskId,
+                    name: mcp.name,
+                    description: '',
+                    cron: mcp.cron,
+                    prompt: mcp.prompt,
+                    groupId: mcp.chatJid,
+                    enabled: true,
+                  });
+                  logger.info({ sessionId, taskId }, '[claude-session] scheduled task via MCP');
+                }
+                continue;
+              }
+            } catch {
+              // not JSON, fall through to plain text logging
             }
-            continue;
           }
           logger.info({ sessionId, line: trimmed }, '[agent-runner] stderr');
         }
@@ -876,6 +934,18 @@ process.stdin.on('end', () => {
         if (message.__runner_error__) {
           streamError = message.error || 'Agent runner error';
           yield { type: 'error', error: streamError || 'Agent runner error', timestamp: Date.now() };
+          continue;
+        }
+
+        // Handle direct stream events from HappyClaw ported runner
+        if (message.__claw_event__) {
+          const { __claw_event__, ...event } = message;
+          if (event.eventType === 'init' && (event.sessionId || event.session_id)) {
+            const sid = event.sessionId || event.session_id;
+            session.sdkSessionId = sid;
+            sessionDb.update(sessionId, { sdk_session_id: sid });
+          }
+          onStreamEvent?.(event as StreamEvent);
           continue;
         }
 
@@ -952,6 +1022,7 @@ process.stdin.on('end', () => {
       clearTimeout(hardTimeout);
       clearTimeout(slowStatusTimer);
       clearTimeout(firstTokenKillTimer);
+      clearTimeout(startupHeartbeatTimer);
       runnerLogStream?.end();
       runnerLogStream = null;
 
@@ -1032,11 +1103,13 @@ process.stdin.on('end', () => {
 
   // Clean up abort controller, IPC directory and release pool slot
   session.abortController = undefined;
-  try { rmSync(ipcInputDir, { recursive: true, force: true }); } catch {}
   if (proc && !proc.killed) {
     try { proc.kill('SIGTERM'); } catch {}
   }
   agentPool.release(sessionId);
+  } finally {
+    releaseLock();
+  }
 }
 
 // Save user message
@@ -1090,6 +1163,10 @@ export function loadSessionsFromDb() {
       const group = groupDb.findById(row.workspace as string);
       const expectedWorkDir = group?.folder || (row.workspace as string);
       const workDir = (row.workDir as string) === expectedWorkDir ? (row.workDir as string) : expectedWorkDir;
+      const normalizedStatus = row.status === 'running' || row.status === 'error' ? 'idle' : (row.status as ISessionInfo['status']);
+      if (normalizedStatus !== row.status) {
+        sessionDb.update(row.id as string, { status: normalizedStatus });
+      }
       sessions.set(key, {
         sessionId: row.id as string,
         userId: row.userId as string,
@@ -1102,7 +1179,7 @@ export function loadSessionsFromDb() {
         tmpDir: row.tmpDir as string,
         createdAt: row.createdAt as number,
         lastActiveAt: row.lastActiveAt as number,
-        status: row.status as ISessionInfo['status'],
+        status: normalizedStatus,
       });
     }
   }

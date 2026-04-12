@@ -5,6 +5,7 @@ interface TrackedProcess {
   workspaceId: string;
   userId: string;
   startedAt: number;
+  killed: boolean;
 }
 
 const registry = new Map<string, TrackedProcess>();
@@ -20,6 +21,7 @@ export function registerProcess(
     workspaceId,
     userId,
     startedAt: Date.now(),
+    killed: false,
   });
 
   proc.on('exit', () => {
@@ -50,11 +52,12 @@ export function getProcessByWorkspace(workspaceId: string): TrackedProcess | und
 
 export function stopProcess(processId: string, force = false): boolean {
   const tracked = registry.get(processId);
-  if (!tracked || tracked.proc.killed) {
+  if (!tracked || tracked.proc.killed || tracked.killed) {
     registry.delete(processId);
     return false;
   }
 
+  tracked.killed = true;
   tracked.proc.kill(force ? 'SIGKILL' : 'SIGTERM');
   return true;
 }
@@ -82,7 +85,7 @@ export async function waitForWorkspaceExit(workspaceId: string, timeoutMs = 3000
 export function listActive(): Array<{ processId: string; workspaceId: string; userId: string; startedAt: number }> {
   const result: Array<{ processId: string; workspaceId: string; userId: string; startedAt: number }> = [];
   for (const [processId, tracked] of registry) {
-    if (!tracked.proc.killed) {
+    if (!tracked.proc.killed && !tracked.killed) {
       result.push({
         processId,
         workspaceId: tracked.workspaceId,
@@ -97,7 +100,7 @@ export function listActive(): Array<{ processId: string; workspaceId: string; us
 export function countActive(): number {
   let count = 0;
   for (const tracked of registry.values()) {
-    if (!tracked.proc.killed) {
+    if (!tracked.proc.killed && !tracked.killed) {
       count++;
     }
   }
@@ -111,7 +114,7 @@ export function startProcessWatchdog(): void {
   setInterval(() => {
     const now = Date.now();
     for (const [processId, tracked] of registry) {
-      if (tracked.proc.killed) {
+      if (tracked.proc.killed || tracked.killed) {
         registry.delete(processId);
         continue;
       }
