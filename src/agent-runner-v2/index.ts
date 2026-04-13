@@ -1520,6 +1520,15 @@ async function runQuery(
       // pollIpcDuringQuery 会在 POST_RESULT_TIMEOUT_MS 后关闭 stream，
       // 期间仍可检测 _drain/_close/_interrupt sentinel。
       resultReceivedAt = Date.now();
+
+      // Claw 模式下立即结束 query，避免等待 POST_RESULT_TIMEOUT_MS（5s）
+      // 导致前端流式状态无法及时收尾、出现“消息未结束”的体感延迟。
+      if (outputMode === 'claw') {
+        processor.cleanup();
+        ipcPolling = false;
+        ipcQueryWatcher.close();
+        return { newSessionId, lastAssistantUuid, closedDuringQuery, interruptedDuringQuery };
+      }
     }
   }
 
@@ -1598,12 +1607,12 @@ async function runQuery(
  * an unref'd timer won't keep the loop alive and the SIGKILL never fires.
  * Using a ref'd timer guarantees the safety net triggers.
  */
-function forceExitWithSafetyNet(code: number): never {
-  log(`Exiting with code ${code}, SIGKILL safety net in 5s`);
+function forceExitWithSafetyNet(code: number, timeoutMs = 5000): never {
+  log(`Exiting with code ${code}, SIGKILL safety net in ${timeoutMs}ms`);
   setTimeout(() => {
     log('process.exit() did not terminate, forcing SIGKILL', 'error');
     process.kill(process.pid, 'SIGKILL');
-  }, 5000);
+  }, timeoutMs);
   process.exit(code);
 }
 
@@ -2009,7 +2018,7 @@ async function main(): Promise<void> {
       result: null,
       error: errorMessage
     });
-    forceExitWithSafetyNet(1);
+    forceExitWithSafetyNet(1, outputMode === 'claw' ? 500 : 5000);
   }
 
   // main() 正常结束后必须显式退出。
@@ -2020,7 +2029,7 @@ async function main(): Promise<void> {
   // Safety net: 当 SDK 的后台 Task (run_in_background) 持有异步资源时，
   // process.exit() 可能无法终止进程。5 秒后强制 SIGKILL。
   // 参考 GitHub issue #236。
-  forceExitWithSafetyNet(0);
+  forceExitWithSafetyNet(0, outputMode === 'claw' ? 500 : 5000);
 }
 
 // 处理管道断开（EPIPE）：父进程关闭管道后仍有写入时，静默退出避免 code 1 错误输出
@@ -2045,12 +2054,12 @@ process.on('SIGTERM', () => {
       writeOutput({ status: 'success', result: null, newSessionId: latestSessionId });
     } catch { /* stdout may be closed */ }
   }
-  forceExitWithSafetyNet(0);
+  forceExitWithSafetyNet(0, outputMode === 'claw' ? 500 : 5000);
 });
 
 process.on('SIGINT', () => {
   log('Received SIGINT, exiting gracefully');
-  forceExitWithSafetyNet(0);
+  forceExitWithSafetyNet(0, outputMode === 'claw' ? 500 : 5000);
 });
 
 process.on('uncaughtException', (err: unknown) => {
