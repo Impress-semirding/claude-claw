@@ -22,6 +22,7 @@ import { startProcessWatchdog } from './services/process-registry.js';
 import { runDailySummaryIfNeeded } from './daily-summary.js';
 import { ensurePredefinedAgentsForAllGroups } from './services/agent-presets.js';
 import { startSchedulerLoop, initializeTaskSchedules } from './services/task-scheduler.js';
+import { runnerPool } from './services/runner-pool.js';
 
 // Import routes
 import authRoutes, { authMiddleware, adminMiddleware } from './routes/auth.js';
@@ -127,6 +128,11 @@ async function init() {
 
     // Start runner process watchdog
     startProcessWatchdog();
+
+    // Warm up persistent runner pool (non-blocking — failures are logged, not fatal)
+    runnerPool.warmup().catch(err =>
+      logger.error({ err }, '[runner-pool] warmup error')
+    );
 
     // Daily heartbeat summary (runs within 2:00–3:00 AM window, throttled to once per 55min)
     setInterval(() => {

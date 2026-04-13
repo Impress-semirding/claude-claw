@@ -1,5 +1,4 @@
 import type { WorkspaceIsolator } from './index.js';
-import { SandboxExecIsolator } from './sandbox-exec.js';
 import { CrunIsolator } from './crun.js';
 import { PassthroughIsolator } from './passthrough.js';
 
@@ -12,11 +11,10 @@ export function getIsolator(): WorkspaceIsolator {
 
   const platform = process.platform;
 
-  if (platform === 'darwin') {
-    instance = new SandboxExecIsolator();
-  } else if (platform === 'linux') {
+  if (platform === 'linux') {
     instance = new CrunIsolator();
   } else {
+    // macOS sandbox-exec is deprecated/unstable; fall back to passthrough
     instance = new PassthroughIsolator();
   }
 

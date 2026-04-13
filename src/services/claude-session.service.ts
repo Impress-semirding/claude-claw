@@ -17,6 +17,7 @@ import {
   extractRetryAfterMs,
 } from './retry.js';
 import { agentPool } from './agent-pool.js';
+import { runnerPool } from './runner-pool.js';
 import { providerPool } from './provider-pool.js';
 import { logger } from '../logger.js';
 import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
@@ -694,6 +695,160 @@ process.stdin.on('end', () => {
   delete serializableOptions.canUseTool;
   delete serializableOptions.spawnClaudeCodeProcess;
 
+  // TypeScript cannot narrow `session` inside nested closures; assert non-null once here.
+  const resolvedSession = session!;
+
+  // ── Shared stream-consumer logic ──────────────────────────────────────────
+  // Extracted so both the persistent-runner path and the fallback spawn path
+  // can reuse the exact same message-dispatch code.
+  // Returns true if at least one assistant message was produced (used by retry logic).
+  async function* consumeRunnerLines(
+    lineSource: AsyncIterable<string>,
+    runnerStartTs: number,
+    killRunner: () => void,
+    onAssistantOutput: () => void,
+  ): AsyncGenerator<IStreamEvent> {
+    const processor = onStreamEvent
+      ? new ClawStreamProcessor(onStreamEvent, turnId || `turn-${Date.now()}`)
+      : null;
+    let streamError: string | null = null;
+
+    const STATUS_SLOW_MS = 15000;
+    const FIRST_TOKEN_KILL_MS = 30000;
+    let firstTokenReceived = false;
+    let killedByFirstTokenTimeout = false;
+
+    const slowStatusTimer = setTimeout(() => {
+      onStreamEvent?.({ eventType: 'status', statusText: '模型响应较慢，请稍候…', turnId: turnId || `turn-${Date.now()}` });
+    }, STATUS_SLOW_MS);
+
+    const firstTokenKillTimer = setTimeout(() => {
+      killedByFirstTokenTimeout = true;
+      logger.error({ sessionId }, '[claude-session] first token timeout reached, killing runner');
+      killRunner();
+    }, FIRST_TOKEN_KILL_MS);
+
+    for await (const line of lineSource) {
+      if (!firstTokenReceived) {
+        firstTokenReceived = true;
+        clearTimeout(slowStatusTimer);
+        clearTimeout(firstTokenKillTimer);
+        if (selectedProviderId) {
+          providerPool.reportLatency(selectedProviderId, Date.now() - runnerStartTs);
+        }
+      }
+      if (abortController.signal.aborted) {
+        yield { type: 'error', error: 'Query aborted by user', timestamp: Date.now() };
+        break;
+      }
+
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === '__CLAW_END__') {
+        if (trimmed === '__CLAW_END__') break;
+        continue;
+      }
+
+      let message: any;
+      try {
+        message = JSON.parse(trimmed);
+      } catch {
+        logger.error({ sessionId, line: trimmed.slice(0, 200) }, '[claude-session] Failed to parse runner output line');
+        continue;
+      }
+
+      if (message.__runner_error__) {
+        streamError = message.error || 'Agent runner error';
+        yield { type: 'error', error: streamError || 'Agent runner error', timestamp: Date.now() };
+        continue;
+      }
+
+      if (message.__claw_event__) {
+        const { __claw_event__, ...event } = message;
+        if (event.eventType === 'init' && (event.sessionId || event.session_id)) {
+          const sid = event.sessionId || event.session_id;
+          resolvedSession.sdkSessionId = sid;
+          sessionDb.update(sessionId, { sdk_session_id: sid });
+        }
+        onStreamEvent?.(event as StreamEvent);
+        continue;
+      }
+
+      if (message.type === 'result') {
+        if (message.is_error) {
+          yield { type: 'error', error: message.result || 'Claude Code error', timestamp: Date.now() };
+        }
+        // Persist SDK session ID from result marker (persistent mode emits this)
+        if (message.session_id) {
+          if (message.session_id !== resolvedSession.sdkSessionId) {
+            resolvedSession.sdkSessionId = message.session_id;
+            sessionDb.update(sessionId, { sdk_session_id: message.session_id });
+          }
+          if (message.last_assistant_uuid) {
+            resolvedSession.lastAssistantUuid = message.last_assistant_uuid;
+            sessionDb.update(sessionId, { last_assistant_uuid: message.last_assistant_uuid });
+          }
+        }
+        continue;
+      }
+
+      if (message.type === 'system' && message.subtype === 'init') {
+        resolvedSession.sdkSessionId = message.session_id;
+        sessionDb.update(sessionId, { sdk_session_id: message.session_id });
+      }
+
+      if (processor) {
+        processor.processMessage(message);
+        if (message.type === 'assistant') onAssistantOutput();
+        if (message.type === 'error') {
+          yield { type: 'error', error: message.error || 'Unknown error', timestamp: Date.now() };
+        }
+        continue;
+      }
+
+      // Backwards-compatible path when no onStreamEvent provided
+      let content: string | undefined = message.content;
+      if (message.type === 'assistant' && !content && message.message) {
+        const msgContent = message.message.content;
+        if (Array.isArray(msgContent)) {
+          content = msgContent.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('');
+        } else if (typeof msgContent === 'string') {
+          content = msgContent;
+        }
+      }
+      if (message.type === 'assistant') onAssistantOutput();
+
+      yield {
+        type: message.type as IStreamEvent['type'],
+        subtype: message.subtype,
+        content,
+        tool_name: message.tool_name || message.message?.tool_name,
+        tool_input: message.tool_input || message.message?.tool_input,
+        tool_output: message.tool_output,
+        error: message.error,
+        session_id: message.session_id || resolvedSession.sdkSessionId,
+        timestamp: Date.now(),
+      };
+    }
+
+    clearTimeout(slowStatusTimer);
+    clearTimeout(firstTokenKillTimer);
+
+    if (killedByFirstTokenTimeout) {
+      throw new Error('First token timeout after 30s');
+    }
+
+    if (processor) {
+      processor.cleanup();
+      const fullText = processor.getFullText();
+      if (fullText) {
+        yield { type: 'assistant', content: fullText, timestamp: Date.now() };
+        onAssistantOutput();
+      }
+    }
+
+    if (streamError) throw new Error(streamError);
+  }
+
   // Retry loop for spawning agent runner and consuming stream (covers both stage 1 & stage 2)
   const MAX_RETRIES = 3;
   const QUERY_HARD_TIMEOUT_MS = 10 * 60 * 1000;
@@ -703,48 +858,29 @@ process.stdin.on('end', () => {
   let streamConsumed = false;
   let hadAssistantOutput = false;
 
+  // Build the runner input JSON once (re-built per attempt below for resume options)
+  const buildRunnerInput = (attemptOptions: any) => JSON.stringify({
+    prompt: fullPrompt,
+    options: attemptOptions,
+    ipcDir: ipcInputDir,
+    allowedTools: agentOptions?.allowedTools ?? groupConfig?.allowedTools,
+    disallowedTools: agentOptions?.disallowedTools ?? groupConfig?.disallowedTools,
+    mcpEnv: {
+      userId,
+      chatJid: workspace,
+      workspaceDir: absWorkDir,
+      userGlobalPath: resolve(appConfig.dataDir, 'groups', 'user-global', userId, 'CLAUDE.md'),
+      groupConfig,
+      isHome: true,
+    },
+  });
+
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       logger.trace({ sessionId, attempt }, '[claude-session] acquiring pool slot attempt');
       await agentPool.acquire(sessionId, 30000);
 
-      const isTs = runnerPath.endsWith('.ts');
-      const command = isTs ? resolve(process.cwd(), 'node_modules/.bin/tsx') : 'node';
-      logger.info({ sessionId, command, runnerPath, workspace }, '[claude-session] spawning agent runner');
-
-      const runnerStartTs = Date.now();
-      const runnerLogPath = resolve(appConfig.dataDir, 'logs', `runner-${sessionId}.log`);
-      runnerLogStream = createWriteStream(runnerLogPath, { flags: 'a' });
-
-      const runnerEnv: Record<string, string> = {
-        ...env,
-        HAPPYCLAW_WORKSPACE_GROUP: absWorkDir,
-        HAPPYCLAW_WORKSPACE_GLOBAL: userGlobalDir,
-        HAPPYCLAW_WORKSPACE_MEMORY: memoryDir,
-        HAPPYCLAW_WORKSPACE_IPC: resolve(appConfig.dataDir, 'ipc', sessionId),
-      };
-      proc = isolator.spawn({
-        command,
-        args: [runnerPath],
-        cwd: process.cwd(),
-        env: runnerEnv,
-        signal: abortController.signal,
-        workspaceId: sessionId,
-        userId,
-      });
-
-      agentPool.bind(sessionId, proc);
-      const processId = `${userId}-${sessionId}-${Date.now()}`;
-      processRegistry.registerProcess(processId, proc, workspace, userId);
-
-      proc.on('exit', (code, signal) => {
-        logger.info({ sessionId, code, signal, pid: proc?.pid }, '[claude-session] agent runner exited');
-      });
-      proc.on('error', (err) => {
-        logger.error({ sessionId, error: err.message }, '[claude-session] agent runner process error');
-      });
-
-      // Re-serialize options on every retry so previous attempt mutations don't leak
+      // Re-build resume options on every attempt so previous mutations don't leak
       const attemptOptions: any = { ...serializableOptions };
       if (!isCompacting && session.sdkSessionId) {
         attemptOptions.resume = session.sdkSessionId;
@@ -752,316 +888,168 @@ process.stdin.on('end', () => {
           attemptOptions.resumeSessionAt = session.lastAssistantUuid;
         }
       }
+      const runnerInput = buildRunnerInput(attemptOptions);
+      const runnerStartTs = Date.now();
 
-      const runnerInput = JSON.stringify({
-        prompt: fullPrompt,
-        options: attemptOptions,
-        ipcDir: ipcInputDir,
-        allowedTools: agentOptions?.allowedTools ?? groupConfig?.allowedTools,
-        disallowedTools: agentOptions?.disallowedTools ?? groupConfig?.disallowedTools,
-        mcpEnv: {
-          userId,
-          chatJid: workspace,
-          workspaceDir: absWorkDir,
-          userGlobalPath: resolve(appConfig.dataDir, 'groups', 'user-global', userId, 'CLAUDE.md'),
-          groupConfig,
-          isHome: true,
-        },
-      });
+      // ── Path A: persistent runner pool ────────────────────────────────────
+      const usePersistent = runnerPool.totalCount > 0;
+      if (usePersistent) {
+        logger.info({ sessionId, idle: runnerPool.idleCount, total: runnerPool.totalCount }, '[claude-session] using persistent runner');
+        const entry = await runnerPool.acquire(30000);
 
-      // Safe stdin write (#8)
-      await new Promise<void>((resolve, reject) => {
-        if (!proc!.stdin) {
-          reject(new Error('Agent runner stdin is not available'));
-          return;
+        // Hard timeout aborts the query by releasing the runner
+        const hardTimeout = setTimeout(() => {
+          logger.error({ sessionId }, '[claude-session] hard timeout reached, releasing persistent runner');
+          runnerPool.release(entry);
+        }, QUERY_HARD_TIMEOUT_MS);
+
+        try {
+          await runnerPool.sendQuery(entry, runnerInput);
+          const lineSource = runnerPool.readUntilEnd(entry);
+          yield* consumeRunnerLines(lineSource, runnerStartTs, () => runnerPool.release(entry), () => { hadAssistantOutput = true; });
+        } finally {
+          clearTimeout(hardTimeout);
+          runnerPool.release(entry);
+          agentPool.release(sessionId);
         }
-        proc!.stdin.on('error', (err) => {
-          logger.error({ sessionId, error: err.message }, '[claude-session] runner stdin error');
+
+      } else {
+        // ── Path B: fallback — spawn a fresh runner process (original logic) ──
+        const isTs = runnerPath.endsWith('.ts');
+        const command = isTs ? resolve(process.cwd(), 'node_modules/.bin/tsx') : 'node';
+        logger.info({ sessionId, command, runnerPath, workspace }, '[claude-session] spawning agent runner (fallback)');
+
+        const runnerLogPath = resolve(appConfig.dataDir, 'logs', `runner-${sessionId}.log`);
+        runnerLogStream = createWriteStream(runnerLogPath, { flags: 'a' });
+
+        const runnerEnv: Record<string, string> = {
+          ...env,
+          HAPPYCLAW_WORKSPACE_GROUP: absWorkDir,
+          HAPPYCLAW_WORKSPACE_GLOBAL: userGlobalDir,
+          HAPPYCLAW_WORKSPACE_MEMORY: memoryDir,
+          HAPPYCLAW_WORKSPACE_IPC: resolve(appConfig.dataDir, 'ipc', sessionId),
+        };
+        proc = isolator.spawn({
+          command,
+          args: [runnerPath],
+          cwd: process.cwd(),
+          env: runnerEnv,
+          signal: abortController.signal,
+          workspaceId: sessionId,
+          userId,
         });
-        proc!.stdin.write(runnerInput, (err) => {
-          if (err) {
-            reject(err);
-          } else {
+
+        agentPool.bind(sessionId, proc);
+        const processId = `${userId}-${sessionId}-${Date.now()}`;
+        processRegistry.registerProcess(processId, proc, workspace, userId);
+
+        proc.on('exit', (code, signal) => {
+          logger.info({ sessionId, code, signal, pid: proc?.pid }, '[claude-session] agent runner exited');
+        });
+        proc.on('error', (err) => {
+          logger.error({ sessionId, error: err.message }, '[claude-session] agent runner process error');
+        });
+
+        // Safe stdin write
+        await new Promise<void>((resolve, reject) => {
+          if (!proc!.stdin) { reject(new Error('Agent runner stdin is not available')); return; }
+          proc!.stdin.on('error', (err) => {
+            logger.error({ sessionId, error: err.message }, '[claude-session] runner stdin error');
+          });
+          proc!.stdin.write(runnerInput, (err) => {
+            if (err) { reject(err); return; }
             proc!.stdin!.end();
             logger.trace({ sessionId, inputBytes: runnerInput.length }, '[claude-session] runner stdin write complete');
             resolve();
+          });
+        });
+
+        // Quick sanity check: if process exits within 500ms, treat as spawn failure
+        await new Promise<void>((resolve, reject) => {
+          const onExitEarly = (code: number | null) => reject(new Error(`Agent runner exited immediately with code ${code}`));
+          proc!.once('exit', onExitEarly);
+          setTimeout(() => { proc!.off('exit', onExitEarly); resolve(); }, 500);
+        });
+
+        // Startup heartbeat
+        let startupHeartbeatReceived = false;
+        const startupHeartbeatTimer = setTimeout(() => {
+          if (!startupHeartbeatReceived) {
+            logger.error({ sessionId }, '[claude-session] startup heartbeat timeout, killing runner');
+            try { proc!.kill('SIGKILL'); } catch {}
+          }
+        }, 5000);
+
+        // Wire up stderr forwarding
+        let stderrBuffer = '';
+        proc.stderr?.on('data', (data: Buffer) => {
+          if (!startupHeartbeatReceived) {
+            startupHeartbeatReceived = true;
+            clearTimeout(startupHeartbeatTimer);
+          }
+          runnerLogStream?.write(data);
+          stderrBuffer += data.toString('utf-8');
+          let newlineIndex: number;
+          while ((newlineIndex = stderrBuffer.indexOf('\n')) !== -1) {
+            const line = stderrBuffer.slice(0, newlineIndex);
+            stderrBuffer = stderrBuffer.slice(newlineIndex + 1);
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            if (trimmed.startsWith('{')) {
+              try {
+                const logMsg = JSON.parse(trimmed);
+                if (logMsg.source === 'agent-runner' && typeof logMsg.msg === 'string') {
+                  const logLevel = ['trace', 'debug', 'info', 'warn', 'error'].includes(logMsg.level) ? logMsg.level : 'info';
+                  (logger as any)[logLevel]({ sessionId, ...logMsg }, '[agent-runner]');
+                  continue;
+                }
+                if (logMsg.__mcp__) {
+                  const mcp = logMsg;
+                  if (mcp.type === 'send_message') {
+                    const msgId = uuidv4();
+                    const ts = new Date().toISOString();
+                    messageDb.create({ id: msgId, sessionId, userId: '__assistant__', role: 'assistant', content: mcp.content, metadata: { senderName: 'Claude', timestamp: ts, sourceKind: 'mcp_send_message' } });
+                    broadcastNewMessage(mcp.chatJid, { id: msgId, chat_jid: mcp.chatJid, sender: '__assistant__', sender_name: 'Claude', content: mcp.content, timestamp: ts, is_from_me: true, sdk_message_uuid: null, source_kind: 'mcp_send_message' });
+                  } else if (mcp.type === 'schedule_task') {
+                    const taskId = uuidv4();
+                    taskDb.create({ id: taskId, name: mcp.name, description: '', cron: mcp.cron, prompt: mcp.prompt, groupId: mcp.chatJid, enabled: true });
+                    logger.info({ sessionId, taskId }, '[claude-session] scheduled task via MCP');
+                  }
+                  continue;
+                }
+              } catch { /* not JSON */ }
+            }
+            logger.info({ sessionId, line: trimmed }, '[agent-runner] stderr');
           }
         });
-      });
 
-      // Quick sanity check: if process exits within 500ms, treat as spawn failure
-      await new Promise<void>((resolve, reject) => {
-        const onExitEarly = (code: number | null) => {
-          reject(new Error(`Agent runner exited immediately with code ${code}`));
-        };
-        proc!.once('exit', onExitEarly);
-        setTimeout(() => {
-          proc!.off('exit', onExitEarly);
-          resolve();
-        }, 500);
-      });
+        if (!proc.stdout) throw new Error('Agent runner stdout is not available');
+        const rl = createInterface({ input: proc.stdout });
 
-      // Startup heartbeat: if runner produces no stderr within 5s, it likely hung during init
-      let startupHeartbeatReceived = false;
-      const STARTUP_HEARTBEAT_MS = 5000;
-      const startupHeartbeatTimer = setTimeout(() => {
-        if (!startupHeartbeatReceived) {
-          logger.error({ sessionId }, '[claude-session] startup heartbeat timeout, killing runner');
+        const hardTimeout = setTimeout(() => {
+          logger.error({ sessionId }, '[claude-session] hard timeout reached, killing runner');
           try { proc!.kill('SIGKILL'); } catch {}
-        }
-      }, STARTUP_HEARTBEAT_MS);
+        }, QUERY_HARD_TIMEOUT_MS);
 
-      // --- Stream consumption ---
-      const processor = onStreamEvent ? new ClawStreamProcessor(onStreamEvent, turnId || `turn-${Date.now()}`) : null;
-      if (!proc.stdout) {
-        throw new Error('Agent runner stdout is not available');
-      }
-      const rl = createInterface({ input: proc.stdout });
-      let streamError: string | null = null;
-
-      // Hard timeout (#2)
-      const hardTimeout = setTimeout(() => {
-        logger.error({ sessionId }, '[claude-session] hard timeout reached, killing runner');
-        try { proc!.kill('SIGKILL'); } catch {}
-      }, QUERY_HARD_TIMEOUT_MS);
-
-      let stderrBuffer = '';
-      proc.stderr?.on('data', (data: Buffer) => {
-        if (!startupHeartbeatReceived) {
-          startupHeartbeatReceived = true;
-          clearTimeout(startupHeartbeatTimer);
-        }
-        if (runnerLogStream) {
-          runnerLogStream.write(data);
-        }
-        stderrBuffer += data.toString('utf-8');
-        let newlineIndex: number;
-        while ((newlineIndex = stderrBuffer.indexOf('\n')) !== -1) {
-          const line = stderrBuffer.slice(0, newlineIndex);
-          stderrBuffer = stderrBuffer.slice(newlineIndex + 1);
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-
-          // Forward structured JSON logs from runner
-          if (trimmed.startsWith('{')) {
-            try {
-              const logMsg = JSON.parse(trimmed);
-              if (logMsg.source === 'agent-runner' && typeof logMsg.msg === 'string') {
-                const logLevel = ['trace', 'debug', 'info', 'warn', 'error'].includes(logMsg.level) ? logMsg.level : 'info';
-                (logger as any)[logLevel]({ sessionId, ...logMsg }, '[agent-runner]');
-                continue;
-              }
-              if (logMsg.__mcp__) {
-                const mcp = logMsg;
-                if (mcp.type === 'send_message') {
-                  const msgId = uuidv4();
-                  const ts = new Date().toISOString();
-                  messageDb.create({
-                    id: msgId,
-                    sessionId,
-                    userId: '__assistant__',
-                    role: 'assistant',
-                    content: mcp.content,
-                    metadata: { senderName: 'Claude', timestamp: ts, sourceKind: 'mcp_send_message' },
-                  });
-                  broadcastNewMessage(mcp.chatJid, {
-                    id: msgId,
-                    chat_jid: mcp.chatJid,
-                    sender: '__assistant__',
-                    sender_name: 'Claude',
-                    content: mcp.content,
-                    timestamp: ts,
-                    is_from_me: true,
-                    sdk_message_uuid: null,
-                    source_kind: 'mcp_send_message',
-                  });
-                } else if (mcp.type === 'schedule_task') {
-                  const taskId = uuidv4();
-                  taskDb.create({
-                    id: taskId,
-                    name: mcp.name,
-                    description: '',
-                    cron: mcp.cron,
-                    prompt: mcp.prompt,
-                    groupId: mcp.chatJid,
-                    enabled: true,
-                  });
-                  logger.info({ sessionId, taskId }, '[claude-session] scheduled task via MCP');
-                }
-                continue;
-              }
-            } catch {
-              // not JSON, fall through to plain text logging
-            }
-          }
-          logger.info({ sessionId, line: trimmed }, '[agent-runner] stderr');
-        }
-      });
-
-      let firstTokenReceived = false;
-      let killedByFirstTokenTimeout = false;
-      const STATUS_SLOW_MS = 15000;
-      const FIRST_TOKEN_KILL_MS = 30000;
-
-      const slowStatusTimer = setTimeout(() => {
-        onStreamEvent?.({ eventType: 'status', statusText: '模型响应较慢，请稍候…', turnId: turnId || `turn-${Date.now()}` });
-      }, STATUS_SLOW_MS);
-
-      const firstTokenKillTimer = setTimeout(() => {
-        killedByFirstTokenTimeout = true;
-        logger.error({ sessionId }, '[claude-session] first token timeout reached, killing runner');
-        try { proc!.kill('SIGKILL'); } catch {}
-      }, FIRST_TOKEN_KILL_MS);
-
-      for await (const line of rl) {
-        if (!firstTokenReceived) {
-          firstTokenReceived = true;
-          clearTimeout(slowStatusTimer);
-          clearTimeout(firstTokenKillTimer);
-          if (selectedProviderId) {
-            providerPool.reportLatency(selectedProviderId, Date.now() - runnerStartTs);
-          }
-        }
-        if (abortController.signal.aborted) {
-          yield { type: 'error', error: 'Query aborted by user', timestamp: Date.now() };
-          break;
-        }
-
-        const trimmed = line.trim();
-        if (!trimmed || trimmed === '__CLAW_END__') {
-          if (trimmed === '__CLAW_END__') break;
-          continue;
-        }
-
-        let message: any;
         try {
-          message = JSON.parse(trimmed);
-        } catch (e) {
-          logger.error({ sessionId, line: trimmed.slice(0, 200) }, '[claude-session] Failed to parse runner output line');
-          continue;
-        }
-
-        // Handle runner-internal errors
-        if (message.__runner_error__) {
-          streamError = message.error || 'Agent runner error';
-          yield { type: 'error', error: streamError || 'Agent runner error', timestamp: Date.now() };
-          continue;
-        }
-
-        // Handle direct stream events from HappyClaw ported runner
-        if (message.__claw_event__) {
-          const { __claw_event__, ...event } = message;
-          if (event.eventType === 'init' && (event.sessionId || event.session_id)) {
-            const sid = event.sessionId || event.session_id;
-            session.sdkSessionId = sid;
-            sessionDb.update(sessionId, { sdk_session_id: sid });
-          }
-          onStreamEvent?.(event as StreamEvent);
-          continue;
-        }
-
-        // Handle result messages (e.g., API errors from SDK)
-        if (message.type === 'result') {
-          if (message.is_error) {
-            yield { type: 'error', error: message.result || 'Claude Code error', timestamp: Date.now() };
-          }
-          continue;
-        }
-
-        // Extract SDK session ID from init message
-        if (message.type === 'system' && message.subtype === 'init') {
-          session.sdkSessionId = message.session_id;
-          sessionDb.update(sessionId, { sdk_session_id: message.session_id });
-        }
-
-        // Track lastAssistantUuid for fine-grained resume on next query
-        if (message.type === 'result' && message.session_id) {
-          if (message.session_id !== session.sdkSessionId) {
-            session.sdkSessionId = message.session_id;
-            sessionDb.update(sessionId, { sdk_session_id: message.session_id });
-          }
-          if (message.last_assistant_uuid) {
-            session.lastAssistantUuid = message.last_assistant_uuid;
-            sessionDb.update(sessionId, { last_assistant_uuid: message.last_assistant_uuid });
-          }
-        }
-
-        if (processor) {
-          processor.processMessage(message);
-          if (message.type === 'assistant') {
-            hadAssistantOutput = true;
-          }
-          if (message.type === 'error') {
-            yield { type: 'error', error: message.error || 'Unknown error', timestamp: Date.now() };
-          }
-          continue;
-        }
-
-        // Backwards-compatible path when no onStreamEvent provided
-        let content: string | undefined = message.content;
-        if (message.type === 'assistant' && !content && message.message) {
-          const msgContent = message.message.content;
-          if (Array.isArray(msgContent)) {
-            content = msgContent
-              .filter((c: any) => c.type === 'text')
-              .map((c: any) => c.text)
-              .join('');
-          } else if (typeof msgContent === 'string') {
-            content = msgContent;
-          }
-        }
-        if (message.type === 'assistant') {
-          hadAssistantOutput = true;
-        }
-
-        const event: IStreamEvent = {
-          type: message.type as IStreamEvent['type'],
-          subtype: message.subtype,
-          content,
-          tool_name: message.tool_name || message.message?.tool_name,
-          tool_input: message.tool_input || message.message?.tool_input,
-          tool_output: message.tool_output,
-          error: message.error,
-          session_id: message.session_id || session.sdkSessionId,
-          timestamp: Date.now(),
-        };
-        yield event;
-      }
-
-      logger.trace({ sessionId, hadAssistantOutput, streamError }, '[claude-session] runner stdout stream ended');
-
-      clearTimeout(hardTimeout);
-      clearTimeout(slowStatusTimer);
-      clearTimeout(firstTokenKillTimer);
-      clearTimeout(startupHeartbeatTimer);
-      runnerLogStream?.end();
-      runnerLogStream = null;
-
-      if (killedByFirstTokenTimeout) {
-        throw new Error('First token timeout after 30s');
-      }
-
-      if (processor) {
-        processor.cleanup();
-        const fullText = processor.getFullText();
-        if (fullText) {
-          yield { type: 'assistant', content: fullText, timestamp: Date.now() };
-          hadAssistantOutput = true;
+          yield* consumeRunnerLines(rl, runnerStartTs, () => { try { proc!.kill('SIGKILL'); } catch {} }, () => { hadAssistantOutput = true; });
+        } finally {
+          clearTimeout(hardTimeout);
+          clearTimeout(startupHeartbeatTimer);
+          runnerLogStream?.end();
+          runnerLogStream = null;
         }
       }
 
-      if (streamError && !proc.killed) {
-        throw new Error(streamError);
-      }
+      logger.trace({ sessionId, hadAssistantOutput }, '[claude-session] runner stream ended');
 
       yield { type: 'complete', timestamp: Date.now(), hadCompaction: isCompacting, isMemoryFlush } as IStreamEvent & { hadCompaction?: boolean; isMemoryFlush?: boolean };
       session.status = 'idle';
       sessionDb.update(sessionId, { status: 'idle' });
       streamConsumed = true;
-      if (selectedProviderId) {
-        providerPool.reportSuccess(selectedProviderId);
-      }
+      if (selectedProviderId) providerPool.reportSuccess(selectedProviderId);
       break; // Success
+
     } catch (err) {
       const category = categorizeError(err);
       lastError = err instanceof Error ? err : new Error(String(err));
@@ -1072,25 +1060,17 @@ process.stdin.on('end', () => {
         agentPool.release(sessionId);
         proc = null;
       }
-      if (runnerLogStream) {
-        runnerLogStream.end();
-        runnerLogStream = null;
-      }
+      runnerLogStream?.end();
+      runnerLogStream = null;
 
-      if (abortController.signal.aborted) {
-        break;
-      }
+      if (abortController.signal.aborted) break;
 
-      // Conservative retry policy for stream-stage errors (#5):
-      // Only retry if we haven't produced any assistant output yet.
       if (hadAssistantOutput) {
         logger.info({ sessionId }, '[claude-session] assistant output already produced, skipping retry');
         break;
       }
 
-      if (!shouldRetry(category, attempt, MAX_RETRIES)) {
-        break;
-      }
+      if (!shouldRetry(category, attempt, MAX_RETRIES)) break;
 
       const retryAfterMs = extractRetryAfterMs(err);
       const delayMs = calculateRetryDelay(attempt, category, retryAfterMs);

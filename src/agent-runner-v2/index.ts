@@ -2,11 +2,21 @@
  * HappyClaw Agent Runner
  * Runs inside a container, receives config via stdin, outputs result to stdout
  *
- * Input protocol:
+ * Input protocol (normal mode):
  *   Stdin: Full ContainerInput JSON (read until EOF, like before)
  *   IPC:   Follow-up messages written as JSON files to /workspace/ipc/input/
  *          Files: {type:"message", text:"..."}.json — polled and consumed
  *          Sentinel: /workspace/ipc/input/_close — signals session end
+ *
+ * Input protocol (persistent mode, --persistent flag):
+ *   Phase 1 – Init: Stdin receives ClawPersistentInit JSON terminated by
+ *             PERSISTENT_INIT_END marker, containing env/config but no prompt.
+ *             Runner sends PERSISTENT_READY\n to stdout when ready.
+ *   Phase 2 – Query loop: Each query arrives as:
+ *             QUERY_START\n{ClawRunnerInput JSON}\nQUERY_END\n
+ *             Response streams JSON lines to stdout, terminated by:
+ *             __CLAW_QUERY_END__\n
+ *             Repeat until QUERY_CLOSE\n received.
  *
  * Stdout protocol:
  *   Each result is wrapped in OUTPUT_START_MARKER / OUTPUT_END_MARKER pairs.
@@ -48,6 +58,8 @@ const WORKSPACE_IPC = process.env.HAPPYCLAW_WORKSPACE_IPC || '/workspace/ipc';
 const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || 'opus[1m]';
 
 let outputMode: 'happyclaw' | 'claw' = 'happyclaw';
+// Set to true when runner is launched with --persistent flag (multi-plex stdin/stdout)
+let persistentMode = false;
 
 interface ClawRunnerInput {
   prompt: string;
@@ -339,6 +351,112 @@ async function readStdin(): Promise<string> {
   });
 }
 
+// ── Persistent (multi-plex) mode constants ──
+const PERSISTENT_INIT_END = '__PERSISTENT_INIT_END__';
+const PERSISTENT_READY = '__PERSISTENT_READY__';
+const QUERY_START = '__QUERY_START__';
+const QUERY_END = '__QUERY_END__';
+const QUERY_CLOSE = '__QUERY_CLOSE__';
+export const CLAW_QUERY_END = '__CLAW_QUERY_END__';
+
+/**
+ * Single persistent stdin buffer for persistent mode.
+ *
+ * Problem: Once we attach a 'data' listener to process.stdin (in readPersistentInit),
+ * the stream enters flowing mode. Any subsequent call that tries to attach a NEW
+ * 'data' listener won't receive data that was already buffered/consumed by the first
+ * listener. We therefore attach exactly ONE 'data' listener for the entire process
+ * lifetime and funnel all reads through this shared buffer.
+ */
+class PersistentStdinBuffer {
+  private buf = '';
+  private waiter: (() => void) | null = null;
+  private ended = false;
+
+  constructor() {
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk: string) => {
+      this.buf += chunk;
+      this.waiter?.();
+    });
+    process.stdin.on('end', () => {
+      this.ended = true;
+      this.waiter?.();
+    });
+    process.stdin.on('error', () => {
+      this.ended = true;
+      this.waiter?.();
+    });
+  }
+
+  /** Wait until buf contains the marker, return everything before it and consume marker. */
+  async readUntilMarker(marker: string): Promise<string | null> {
+    while (true) {
+      const idx = this.buf.indexOf(marker);
+      if (idx !== -1) {
+        const before = this.buf.slice(0, idx);
+        this.buf = this.buf.slice(idx + marker.length);
+        return before;
+      }
+      if (this.ended) return null;
+      await new Promise<void>(r => { this.waiter = r; });
+      this.waiter = null;
+    }
+  }
+
+  get isEnded(): boolean { return this.ended; }
+}
+
+/** Lazily initialised — only used in persistent mode */
+let _stdinBuffer: PersistentStdinBuffer | null = null;
+function getStdinBuffer(): PersistentStdinBuffer {
+  if (!_stdinBuffer) _stdinBuffer = new PersistentStdinBuffer();
+  return _stdinBuffer;
+}
+
+/**
+ * In persistent mode: read the init block from stdin.
+ * The host writes: <json>\n__PERSISTENT_INIT_END__\n
+ */
+async function readPersistentInit(): Promise<string> {
+  const result = await getStdinBuffer().readUntilMarker(PERSISTENT_INIT_END);
+  if (result === null) throw new Error('stdin closed before PERSISTENT_INIT_END');
+  return result.trim();
+}
+
+/**
+ * In persistent mode: wait for the next QUERY_START...QUERY_END block or QUERY_CLOSE.
+ * Returns the JSON string between markers, or null on QUERY_CLOSE / stdin end.
+ */
+async function waitForNextQuery(): Promise<string | null> {
+  const stdinBuf = getStdinBuffer();
+
+  // Find QUERY_START or QUERY_CLOSE — whichever comes first
+  while (true) {
+    const startIdx = stdinBuf['buf'].indexOf(QUERY_START);
+    const closeIdx = stdinBuf['buf'].indexOf(QUERY_CLOSE);
+
+    if (closeIdx !== -1 && (startIdx === -1 || closeIdx < startIdx)) {
+      stdinBuf['buf'] = stdinBuf['buf'].slice(closeIdx + QUERY_CLOSE.length);
+      return null;
+    }
+    if (startIdx !== -1) {
+      // Consume up to and including QUERY_START
+      stdinBuf['buf'] = stdinBuf['buf'].slice(startIdx + QUERY_START.length);
+      break;
+    }
+    if (stdinBuf.isEnded) return null;
+    // Wait for more data
+    await new Promise<void>(r => { stdinBuf['waiter'] = r; });
+    stdinBuf['waiter'] = null;
+  }
+
+  // Now read until QUERY_END
+  const jsonRaw = await stdinBuf.readUntilMarker(QUERY_END);
+  if (jsonRaw === null) return null; // stdin closed mid-query
+  return jsonRaw.trim();
+}
+
 const OUTPUT_START_MARKER = '---HAPPYCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---HAPPYCLAW_OUTPUT_END---';
 
@@ -346,10 +464,13 @@ function writeOutput(output: ContainerOutput): void {
   if (outputMode === 'claw') {
     if (output.status === 'error') {
       console.log(JSON.stringify({ __runner_error__: true, error: output.error || 'Unknown error' }));
+      // In persistent mode, a per-query error still ends this query slot
+      if (persistentMode) console.log(CLAW_QUERY_END);
       return;
     }
     if (output.status === 'closed') {
-      console.log('__CLAW_END__');
+      // In persistent mode: signal end-of-query (not end-of-process)
+      console.log(persistentMode ? CLAW_QUERY_END : '__CLAW_END__');
       return;
     }
     if (output.streamEvent) {
@@ -1616,7 +1737,189 @@ function forceExitWithSafetyNet(code: number, timeoutMs = 5000): never {
   process.exit(code);
 }
 
+/**
+ * Persistent mode entry point.
+ *
+ * Protocol:
+ *   1. Read init JSON terminated by PERSISTENT_INIT_END from stdin.
+ *      Init JSON contains env/config fields but no prompt.
+ *      Write PERSISTENT_READY to stdout when ready.
+ *   2. Loop: read QUERY_START...QUERY_END block from stdin (ClawRunnerInput).
+ *      Run the query, stream JSON lines to stdout.
+ *      End each query with CLAW_QUERY_END.
+ *   3. Exit cleanly on QUERY_CLOSE or stdin end.
+ */
+async function runPersistentMode(): Promise<void> {
+  outputMode = 'claw';
+  log('Persistent mode: reading init block from stdin');
+
+  let initJson: string;
+  try {
+    initJson = await readPersistentInit();
+  } catch (err) {
+    log(`Persistent mode: failed to read init block: ${err}`, 'error');
+    process.exit(1);
+  }
+
+  let initData: any;
+  try {
+    initData = JSON.parse(initJson);
+  } catch (err) {
+    log(`Persistent mode: failed to parse init JSON: ${err}`, 'error');
+    process.exit(1);
+  }
+
+  // Signal host that runner is ready for queries
+  process.stdout.write(`${PERSISTENT_READY}\n`);
+  log('Persistent mode: ready, waiting for queries');
+
+  // Query loop
+  while (true) {
+    let queryJson: string | null;
+    try {
+      queryJson = await waitForNextQuery();
+    } catch (err) {
+      log(`Persistent mode: error waiting for query: ${err}`, 'error');
+      break;
+    }
+
+    if (queryJson === null) {
+      log('Persistent mode: received QUERY_CLOSE or stdin end, exiting');
+      break;
+    }
+
+    let clawInput: ClawRunnerInput;
+    try {
+      clawInput = JSON.parse(queryJson) as ClawRunnerInput;
+    } catch (err) {
+      log(`Persistent mode: failed to parse query JSON: ${err}`, 'error');
+      console.log(JSON.stringify({ __runner_error__: true, error: `Bad query JSON: ${err}` }));
+      console.log(CLAW_QUERY_END);
+      continue;
+    }
+
+    log(`Persistent mode: running query (${clawInput.prompt?.length ?? 0} chars)`);
+    try {
+      await runPersistentQuery(clawInput, initData);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log(`Persistent mode: query error: ${msg}`, 'error');
+      try {
+        console.log(JSON.stringify({ __runner_error__: true, error: msg }));
+        console.log(CLAW_QUERY_END);
+      } catch { /* stdout may be closed */ }
+    }
+  }
+
+  forceExitWithSafetyNet(0, 500);
+}
+
+/**
+ * Run a single query in persistent mode, streaming output to stdout,
+ * then write CLAW_QUERY_END.
+ */
+async function runPersistentQuery(clawInput: ClawRunnerInput, _initData: any): Promise<void> {
+  // Temporarily apply session-specific env vars (API key, configDir, etc.)
+  // sent inside options.env.  Restore originals after the query completes.
+  const queryEnv: Record<string, string> = clawInput.options?.env || {};
+  const restored: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(queryEnv)) {
+    restored[k] = process.env[k];
+    process.env[k] = v;
+  }
+
+  try {
+    await _runPersistentQueryInner(clawInput);
+  } finally {
+    for (const [k, v] of Object.entries(restored)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+async function _runPersistentQueryInner(clawInput: ClawRunnerInput): Promise<void> {
+  const containerInput: ContainerInput = {
+    prompt: clawInput.prompt,
+    sessionId: clawInput.options?.resume || undefined,
+    chatJid: clawInput.mcpEnv?.chatJid || 'web:main',
+    groupFolder: clawInput.mcpEnv?.chatJid || 'main',
+    isHome: clawInput.mcpEnv?.isHome ?? true,
+    isAdminHome: true,
+    turnId: `claw-${Date.now()}`,
+    images: clawInput.options?.images,
+    isScheduledTask: false,
+  };
+
+  let sessionId = containerInput.sessionId;
+  latestSessionId = sessionId;
+  const { isHome, isAdminHome } = normalizeHomeFlags(containerInput);
+
+  const mcpToolsConfig = {
+    chatJid: containerInput.chatJid,
+    groupFolder: containerInput.groupFolder,
+    isHome,
+    isAdminHome,
+    isScheduledTask: false,
+    workspaceIpc: WORKSPACE_IPC,
+    workspaceGroup: WORKSPACE_GROUP,
+    workspaceGlobal: WORKSPACE_GLOBAL,
+    workspaceMemory: WORKSPACE_MEMORY,
+    outputMode,
+  };
+  const mcpServerConfig = createSdkMcpServer({
+    name: 'happyclaw',
+    version: '1.0.0',
+    tools: createMcpTools(mcpToolsConfig),
+  });
+  const memoryRecallPrompt = buildMemoryRecallPrompt(isHome, isAdminHome);
+
+  // Ensure IPC dir exists
+  fs.mkdirSync(IPC_INPUT_DIR, { recursive: true });
+  try { fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL); } catch { /* ignore */ }
+  cleanupStartupInterruptSentinel();
+
+  // Run the query (single shot in persistent mode — IPC reuse not needed here
+  // because the outer loop handles multi-turn via repeated QUERY_START blocks)
+  const queryResult = await runQuery(
+    clawInput.prompt,
+    sessionId,
+    mcpServerConfig,
+    containerInput,
+    memoryRecallPrompt,
+    clawInput.options?.resumeSessionAt,
+    true,
+    clawInput.allowedTools || DEFAULT_ALLOWED_TOOLS,
+    clawInput.disallowedTools,
+    clawInput.options?.images,
+  );
+
+  if (queryResult.newSessionId) {
+    sessionId = queryResult.newSessionId;
+    latestSessionId = sessionId;
+  }
+
+  // Emit result marker so the host knows the SDK session ID
+  if (queryResult.newSessionId) {
+    console.log(JSON.stringify({
+      type: 'result',
+      session_id: queryResult.newSessionId,
+      last_assistant_uuid: queryResult.lastAssistantUuid,
+    }));
+  }
+
+  // End this query slot
+  console.log(CLAW_QUERY_END);
+}
+
 async function main(): Promise<void> {
+  // Detect persistent mode: launched with --persistent flag
+  if (process.argv.includes('--persistent')) {
+    persistentMode = true;
+    await runPersistentMode();
+    return;
+  }
+
   let containerInput: ContainerInput;
   let clawInput: ClawRunnerInput | undefined;
 
