@@ -111,7 +111,8 @@ export function countActive(): number {
 }
 
 const WATCHDOG_INTERVAL_MS = 60_000; // every 60s
-const MAX_RUNNER_LIFETIME_MS = 15 * 60 * 1000; // 15 minutes
+// Allow overriding via env for long-running tasks; default 60 minutes
+const MAX_RUNNER_LIFETIME_MS = parseInt(process.env.CLAUDE_RUNNER_WATCHDOG_TIMEOUT_MS || '3600000', 10);
 
 export function startProcessWatchdog(): void {
   setInterval(() => {

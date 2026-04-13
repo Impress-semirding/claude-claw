@@ -140,13 +140,43 @@ class RunnerPool {
     });
   }
 
-  /** Async-iterate stdout lines until CLAW_QUERY_END (or stdout closes) */
+  /** Async-iterate stdout lines until CLAW_QUERY_END (or stdout closes).
+   *  Uses event-based consumption because readline.Interface's async iterator
+   *  cannot be restarted after the first for-await loop ends (the underlying
+   *  ReadableStream iterator is exhausted). */
   async *readUntilEnd(entry: RunnerEntry): AsyncGenerator<string> {
-    for await (const line of entry.rl) {
-      if (line === CLAW_QUERY_END) return;
-      yield line;
+    const rl = entry.rl;
+    const buffer: string[] = [];
+    let resolveNext: (() => void) | null = null;
+    let closed = false;
+
+    const onLine = (line: string) => {
+      buffer.push(line);
+      resolveNext?.();
+    };
+    const onClose = () => {
+      closed = true;
+      resolveNext?.();
+    };
+
+    rl.on('line', onLine);
+    rl.once('close', onClose);
+
+    try {
+      while (true) {
+        while (buffer.length > 0) {
+          const line = buffer.shift()!;
+          if (line === CLAW_QUERY_END) return;
+          yield line;
+        }
+        if (closed) return;
+        await new Promise<void>((r) => { resolveNext = r; });
+        resolveNext = null;
+      }
+    } finally {
+      rl.off('line', onLine);
+      rl.off('close', onClose);
     }
-    // stdout closed before marker — runner probably died; caller handles via release()
   }
 
   // ── Shutdown ───────────────────────────────────────────────────────────────

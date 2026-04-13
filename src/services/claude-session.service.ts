@@ -713,8 +713,8 @@ process.stdin.on('end', () => {
       : null;
     let streamError: string | null = null;
 
-    const STATUS_SLOW_MS = 15000;
-    const FIRST_TOKEN_KILL_MS = 30000;
+    const STATUS_SLOW_MS = Math.min(15000, appConfig.claude.firstTokenTimeoutMs);
+    const FIRST_TOKEN_KILL_MS = appConfig.claude.firstTokenTimeoutMs;
     let firstTokenReceived = false;
     let killedByFirstTokenTimeout = false;
 
@@ -724,7 +724,7 @@ process.stdin.on('end', () => {
 
     const firstTokenKillTimer = setTimeout(() => {
       killedByFirstTokenTimeout = true;
-      logger.error({ sessionId }, '[claude-session] first token timeout reached, killing runner');
+      logger.error({ sessionId, timeoutMs: FIRST_TOKEN_KILL_MS }, '[claude-session] first token timeout reached, killing runner');
       killRunner();
     }, FIRST_TOKEN_KILL_MS);
 
@@ -851,7 +851,7 @@ process.stdin.on('end', () => {
 
   // Retry loop for spawning agent runner and consuming stream (covers both stage 1 & stage 2)
   const MAX_RETRIES = 3;
-  const QUERY_HARD_TIMEOUT_MS = 10 * 60 * 1000;
+  const QUERY_HARD_TIMEOUT_MS = appConfig.claude.queryHardTimeoutMs;
   let lastError: Error | null = null;
   let proc: ReturnType<typeof spawn> | null = null;
   let runnerLogStream: ReturnType<typeof createWriteStream> | null = null;

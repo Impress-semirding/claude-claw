@@ -77,8 +77,8 @@ interface ClawRunnerInput {
   };
 }
 
-const IPC_INPUT_DIR = path.join(WORKSPACE_IPC, 'input');
-const IPC_INPUT_CLOSE_SENTINEL = path.join(IPC_INPUT_DIR, '_close');
+let IPC_INPUT_DIR = path.join(WORKSPACE_IPC, 'input');
+let IPC_INPUT_CLOSE_SENTINEL = path.join(IPC_INPUT_DIR, '_close');
 const IPC_FALLBACK_POLL_MS = 5000; // 后备轮询间隔（仅防止 inotify 事件丢失）
 
 
@@ -792,9 +792,9 @@ function shouldClose(): boolean {
   return false;
 }
 
-const IPC_INPUT_DRAIN_SENTINEL = path.join(IPC_INPUT_DIR, '_drain');
+let IPC_INPUT_DRAIN_SENTINEL = path.join(IPC_INPUT_DIR, '_drain');
 
-const IPC_INPUT_INTERRUPT_SENTINEL = path.join(IPC_INPUT_DIR, '_interrupt');
+let IPC_INPUT_INTERRUPT_SENTINEL = path.join(IPC_INPUT_DIR, '_interrupt');
 const INTERRUPT_GRACE_WINDOW_MS = 10_000;
 let lastInterruptRequestedAt = 0;
 
@@ -1097,6 +1097,7 @@ async function runQuery(
   disallowedTools?: string[],
   images?: Array<{ data: string; mimeType?: string }>,
   sourceKindOverride?: ContainerOutput['sourceKind'],
+  cwd?: string,
 ): Promise<{ newSessionId?: string; lastAssistantUuid?: string; closedDuringQuery: boolean; contextOverflow?: boolean; unrecoverableTranscriptError?: boolean; interruptedDuringQuery: boolean; sessionResumeFailed?: boolean }> {
   const stream = new MessageStream();
   let newSessionId: string | undefined;
@@ -1379,7 +1380,7 @@ async function runQuery(
     prompt: stream,
     options: {
       model: CLAUDE_MODEL,
-      cwd: WORKSPACE_GROUP,
+      cwd: cwd ?? WORKSPACE_GROUP,
       additionalDirectories: extraDirs,
       resume: sessionId,
       resumeSessionAt: resumeAt,
@@ -1839,6 +1840,14 @@ async function runPersistentQuery(clawInput: ClawRunnerInput, _initData: any): P
 }
 
 async function _runPersistentQueryInner(clawInput: ClawRunnerInput): Promise<void> {
+  // Update IPC paths per-query so persistent runners respect the host's ipcDir
+  if (clawInput.ipcDir) {
+    IPC_INPUT_DIR = clawInput.ipcDir;
+    IPC_INPUT_CLOSE_SENTINEL = path.join(IPC_INPUT_DIR, '_close');
+    IPC_INPUT_DRAIN_SENTINEL = path.join(IPC_INPUT_DIR, '_drain');
+    IPC_INPUT_INTERRUPT_SENTINEL = path.join(IPC_INPUT_DIR, '_interrupt');
+  }
+
   const containerInput: ContainerInput = {
     prompt: clawInput.prompt,
     sessionId: clawInput.options?.resume || undefined,
@@ -1861,7 +1870,7 @@ async function _runPersistentQueryInner(clawInput: ClawRunnerInput): Promise<voi
     isHome,
     isAdminHome,
     isScheduledTask: false,
-    workspaceIpc: WORKSPACE_IPC,
+    workspaceIpc: clawInput.ipcDir ? path.dirname(clawInput.ipcDir) : WORKSPACE_IPC,
     workspaceGroup: WORKSPACE_GROUP,
     workspaceGlobal: WORKSPACE_GLOBAL,
     workspaceMemory: WORKSPACE_MEMORY,
@@ -1892,6 +1901,8 @@ async function _runPersistentQueryInner(clawInput: ClawRunnerInput): Promise<voi
     clawInput.allowedTools || DEFAULT_ALLOWED_TOOLS,
     clawInput.disallowedTools,
     clawInput.options?.images,
+    undefined,
+    clawInput.mcpEnv?.workspaceDir,
   );
 
   if (queryResult.newSessionId) {

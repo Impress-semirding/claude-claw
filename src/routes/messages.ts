@@ -201,6 +201,38 @@ export async function runAgentQuery(
 
     if (result.error) {
       logger.error({ error: result.error }, '[messages] agent query error');
+      const errorMsgId = randomUUID();
+      const errorTimestamp = new Date().toISOString();
+      const errorContent = `⚠️ ${result.error}`;
+      messageDb.create({
+        id: errorMsgId,
+        sessionId,
+        userId: '__assistant__',
+        role: 'assistant',
+        content: errorContent,
+        metadata: {
+          senderName: 'Claude',
+          turnId,
+          timestamp: errorTimestamp,
+          sourceKind: 'agent_error',
+          finalizationReason: 'error',
+          agentId,
+        },
+      });
+      broadcastNewMessage(chatJid, {
+        id: errorMsgId,
+        chat_jid: chatJid,
+        sender: '__assistant__',
+        sender_name: 'Claude',
+        content: errorContent,
+        timestamp: errorTimestamp,
+        is_from_me: true,
+        turn_id: turnId,
+        session_id: sessionId,
+        sdk_message_uuid: null,
+        source_kind: 'agent_error',
+        finalization_reason: 'error',
+      }, agentId);
     }
 
     // Handle overflow partial recovery
@@ -293,6 +325,40 @@ export async function runAgentQuery(
       eventType: 'error',
       error: errorMsg,
       turnId,
+    }, agentId);
+
+    // Persist error message so the user sees what happened
+    const errorMsgId = randomUUID();
+    const errorTimestamp = new Date().toISOString();
+    const errorContent = `⚠️ ${errorMsg}`;
+    messageDb.create({
+      id: errorMsgId,
+      sessionId,
+      userId: '__assistant__',
+      role: 'assistant',
+      content: errorContent,
+      metadata: {
+        senderName: 'Claude',
+        turnId,
+        timestamp: errorTimestamp,
+        sourceKind: 'agent_error',
+        finalizationReason: 'error',
+        agentId,
+      },
+    });
+    broadcastNewMessage(chatJid, {
+      id: errorMsgId,
+      chat_jid: chatJid,
+      sender: '__assistant__',
+      sender_name: 'Claude',
+      content: errorContent,
+      timestamp: errorTimestamp,
+      is_from_me: true,
+      turn_id: turnId,
+      session_id: sessionId,
+      sdk_message_uuid: null,
+      source_kind: 'agent_error',
+      finalization_reason: 'error',
     }, agentId);
   } finally {
     runningQueries.delete(sessionId);

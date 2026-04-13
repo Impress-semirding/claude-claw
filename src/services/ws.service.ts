@@ -71,6 +71,17 @@ export function setupWebSocket(server: any): WebSocketServer {
     logger.info({ userId: session.userId, role: session.role, totalClients: wsClients.size + 1 }, '[ws] client connected');
     wsClients.set(ws, session);
 
+    // Heartbeat to keep connection alive through proxies and browser power-saving
+    const pingInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.ping();
+      }
+    }, 30000);
+
+    ws.on('pong', () => {
+      logger.trace({ userId: session.userId }, '[ws] pong received');
+    });
+
     ws.on('message', async (data) => {
       try {
         const msg: WsMessageIn = JSON.parse(data.toString());
@@ -83,10 +94,12 @@ export function setupWebSocket(server: any): WebSocketServer {
     });
 
     ws.on('close', () => {
+      clearInterval(pingInterval);
       wsClients.delete(ws);
     });
 
     ws.on('error', () => {
+      clearInterval(pingInterval);
       wsClients.delete(ws);
     });
   });
