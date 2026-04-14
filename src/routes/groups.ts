@@ -690,10 +690,10 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
       // Kill any active isolated processes for this group
       stopWorkspace(jid, true);
 
-      // 更新 session 状态
+      // Graceful interrupt via sentinel for persistent runners
       for (const session of activeSessions) {
         const s = session as any;
-        sessionDb.update(s.id, { status: 'idle' });
+        abortQuery(s.user_id, jid, s.id);
       }
 
       return reply.send({ success: true, interrupted: true });

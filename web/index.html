@@ -1,3 +1,9 @@
+<!--
+ * @Date: 2026-04-04 21:08:22
+ * @Author: dingxue
+ * @Description: 
+ * @LastEditTime: 2026-04-14 21:18:26
+-->
 <!DOCTYPE html>
 <html lang="zh-CN">
   <head>
@@ -10,7 +16,6 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="HappyClaw" />
     <link rel="apple-touch-icon" href="%BASE_URL%icons/apple-touch-icon-180.png" />
 
     <!-- iOS PWA 优化：保留自动识别控制（页面缩放已允许） -->
@@ -19,10 +24,9 @@
 
     <!-- DM Sans: loaded locally via @font-face in globals.css -->
 
-    <title>HappyClaw</title>
   </head>
   <body>
-    <script>(function(){var d=document.documentElement,s=localStorage.getItem('happyclaw-theme');if(s==='dark'||(s!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches))d.classList.add('dark');var c=localStorage.getItem('happyclaw-color-scheme');if(c==='orange')d.classList.add('theme-orange');if(c==='neutral')d.classList.add('theme-neutral');if(localStorage.getItem('happyclaw-font-style')==='anthropic')d.classList.add('font-anthropic');})();</script>
+    <script>(function(){var d=document.documentElement,s=localStorage.getItem('-theme');if(s==='dark'||(s!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches))d.classList.add('dark');var c=localStorage.getItem('-color-scheme');if(c==='orange')d.classList.add('theme-orange');if(c==='neutral')d.classList.add('theme-neutral');if(localStorage.getItem('-font-style')==='anthropic')d.classList.add('font-anthropic');})();</script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

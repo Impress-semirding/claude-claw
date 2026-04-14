@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware } from './auth.js';
 import { subAgentDb, groupDb } from '../db.js';
+import { ensurePredefinedAgents } from '../services/agent-presets.js';
 import { randomUUID } from 'crypto';
 
 export default async function agentsRoutes(fastify: FastifyInstance) {
@@ -16,6 +17,9 @@ export default async function agentsRoutes(fastify: FastifyInstance) {
       if (group.ownerId !== user.userId && !members.includes(user.userId)) {
         return reply.status(403).send({ error: 'Forbidden' });
       }
+
+      // Auto-create predefined agents on first fetch so the list is never empty
+      ensurePredefinedAgents(jid);
 
       const agentsList = subAgentDb.findByGroup(jid).map((a) => ({
         id: a.id,

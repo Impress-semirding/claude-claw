@@ -1,3 +1,9 @@
+/*
+ * @Date: 2026-03-31 22:18:37
+ * @Author: dingxue
+ * @Description: 
+ * @LastEditTime: 2026-04-14 21:16:54
+ */
 import { APP_BASE } from '../../utils/url';
 
 interface LogoLoadingProps {
@@ -10,7 +16,7 @@ interface LogoLoadingProps {
 }
 
 /**
- * Animated loading screen with the HappyClaw logo.
+ * Animated loading screen with the  logo.
  * - `full` mode: shows the complete animated wordmark SVG via <object> so currentColor inherits from CSS
  * - default: shows the icon with a subtle pulse animation
  */
@@ -21,7 +27,7 @@ export function LogoLoading({ full, size = 64, label }: LogoLoadingProps) {
         <object
           data={`${APP_BASE}icons/loading-logo.svg`}
           type="image/svg+xml"
-          aria-label="HappyClaw"
+          aria-label=""
           className="w-[min(80vw,500px)] h-auto"
           style={{ color: 'var(--foreground)' }}
         />
@@ -34,7 +40,6 @@ export function LogoLoading({ full, size = 64, label }: LogoLoadingProps) {
     <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
       <img
         src={`${APP_BASE}icons/icon-192.png`}
-        alt="HappyClaw"
         className="animate-pulse rounded-2xl"
         style={{ width: size, height: size }}
       />

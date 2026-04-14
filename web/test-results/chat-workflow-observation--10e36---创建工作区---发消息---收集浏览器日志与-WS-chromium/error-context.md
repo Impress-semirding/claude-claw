@@ -27,7 +27,7 @@ Error: page.waitForTimeout: Test timeout of 30000ms exceeded.
   - generic [ref=e3]:
     - generic [ref=e5]:
       - navigation [ref=e6]:
-        - img "HappyClaw" [ref=e8]
+        - img "" [ref=e8]
         - button "工作台" [ref=e9]:
           - img [ref=e10]
           - generic [ref=e12]: 工作台
@@ -49,7 +49,7 @@ Error: page.waitForTimeout: Test timeout of 30000ms exceeded.
           - generic [ref=e39]: A
       - generic [ref=e41]:
         - generic [ref=e42]:
-          - img "HappyClaw" [ref=e43]
+          - img "" [ref=e43]
           - button [ref=e44] [cursor=pointer]:
             - img [ref=e45]
         - button "新工作区" [ref=e49]:
@@ -235,7 +235,7 @@ Error: page.waitForTimeout: Test timeout of 30000ms exceeded.
   81  | 
   82  | async function login(page: Page) {
   83  |   await page.goto('/login');
-  84  |   await expect(page.locator('h1')).toContainText('欢迎使用 HappyClaw');
+  84  |   await expect(page.locator('h1')).toContainText('欢迎使用 ');
   85  |   await page.locator('#username').fill('admin@example.com');
   86  |   await page.locator('#password').fill('admin123');
   87  |   await page.getByRole('button', { name: /登录/ }).click();

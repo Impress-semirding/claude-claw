@@ -319,6 +319,7 @@ function restoreStreamingFromSession(chatJid: string): StreamingState | null {
     return {
       ...DEFAULT_STREAMING_STATE,
       partialText: entry.partialText || '',
+      thinkingText: entry.thinkingText || '',
       activeTools: entry.activeTools || [],
       recentEvents: entry.recentEvents || [],
       todos: entry.todos,
@@ -1370,7 +1371,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (typeof document === 'undefined' || !document.hidden) {
           showToast(`${desc} ${status}`, event.taskSummary);
         }
-        notifyIfHidden(`HappyClaw: ${desc} ${status}`, event.taskSummary);
+        notifyIfHidden(`: ${desc} ${status}`, event.taskSummary);
       }
 
       // 不落入主对话 streaming

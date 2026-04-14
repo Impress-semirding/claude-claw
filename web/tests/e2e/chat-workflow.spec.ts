@@ -17,10 +17,10 @@ let mockServer: ReturnType<typeof spawn> | null = null;
 
 async function startMockServer() {
   return new Promise<void>((resolve, reject) => {
-    const mockPath = '/Users/dingxue/Documents/claude/happyclaw/web/tests/e2e/mock-anthropic-server.mjs';
+    const mockPath = '/Users/dingxue/Documents/claude//web/tests/e2e/mock-anthropic-server.mjs';
     mockServer = spawn('node', [mockPath], {
       stdio: 'pipe',
-      cwd: '/Users/dingxue/Documents/claude/happyclaw/web',
+      cwd: '/Users/dingxue/Documents/claude//web',
     });
     let stdout = '';
     mockServer.stdout?.on('data', (d) => {
@@ -103,7 +103,7 @@ test.afterAll(() => {
 
 async function login(page: Page) {
   await page.goto('/login');
-  await expect(page.locator('h1')).toContainText('欢迎使用 HappyClaw');
+  await expect(page.locator('h1')).toContainText('欢迎使用 ');
   await page.locator('#username').fill('admin@example.com');
   await page.locator('#password').fill('test123');
   await page.getByRole('button', { name: /登录/ }).click();

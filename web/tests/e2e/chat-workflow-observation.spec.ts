@@ -81,7 +81,7 @@ async function collectWsMessages(page: Page) {
 
 async function login(page: Page) {
   await page.goto('/login');
-  await expect(page.locator('h1')).toContainText('欢迎使用 HappyClaw');
+  await expect(page.locator('h1')).toContainText('欢迎使用 ');
   await page.locator('#username').fill('admin@example.com');
   await page.locator('#password').fill('admin123');
   await page.getByRole('button', { name: /登录/ }).click();
