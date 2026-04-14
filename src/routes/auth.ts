@@ -9,7 +9,7 @@ import {
   getClientIp,
   createUserSession,
 } from '../services/auth.service.js';
-import { userDb, inviteCodeDb, userSessionDb } from '../db.js';
+import { userDb, inviteCodeDb, userSessionDb, groupDb } from '../db.js';
 import type { IAuthToken } from '../services/auth.service.js';
 import { resolve } from 'path';
 import { writeFileSync, mkdirSync, createReadStream, existsSync, readFileSync } from 'fs';
@@ -103,7 +103,8 @@ function buildSetupStatus() {
 }
 
 function setSessionCookie(_c: any, token: string): string {
-  return `session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 24 * 60 * 60}`;
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  return `session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 24 * 60 * 60}${secure}`;
 }
 
 function clearSessionCookie(_c: any): string {
@@ -149,6 +150,72 @@ export async function adminMiddleware(request: FastifyRequest, reply: FastifyRep
     reply.status(403).send({ error: 'Forbidden' });
     return;
   }
+}
+
+function resolveGroupJid(jid: string): string {
+  const match = jid.match(/^(.+)#agent:(.+)$/);
+  return match ? match[1] : jid;
+}
+
+// Group access middleware - validates the user is a member/owner of the group in :jid
+export async function groupAccessMiddleware(request: FastifyRequest, reply: FastifyReply) {
+  const user = request.user as IAuthToken;
+  const jid = (request.params as any).jid as string | undefined;
+
+  if (!jid) {
+    reply.status(400).send({ success: false, error: 'Missing group jid' });
+    return;
+  }
+
+  const groupJid = resolveGroupJid(jid);
+  const group = groupDb.findById(groupJid);
+  if (!group) {
+    reply.status(404).send({ success: false, error: 'Group not found' });
+    return;
+  }
+
+  const members = group.members || [];
+  if (group.ownerId !== user.userId && !members.includes(user.userId)) {
+    reply.status(403).send({ success: false, error: 'Forbidden' });
+    return;
+  }
+
+  (request as any).group = {
+    id: group.id,
+    ownerId: group.ownerId,
+    members,
+    folder: group.folder,
+  };
+}
+
+// Group owner middleware - validates the user is the owner of the group in :jid
+export async function groupOwnerMiddleware(request: FastifyRequest, reply: FastifyReply) {
+  const user = request.user as IAuthToken;
+  const jid = (request.params as any).jid as string | undefined;
+
+  if (!jid) {
+    reply.status(400).send({ success: false, error: 'Missing group jid' });
+    return;
+  }
+
+  const groupJid = resolveGroupJid(jid);
+  const group = groupDb.findById(groupJid);
+  if (!group) {
+    reply.status(404).send({ success: false, error: 'Group not found' });
+    return;
+  }
+
+  if (group.ownerId !== user.userId && user.role !== 'admin') {
+    reply.status(403).send({ success: false, error: 'Forbidden: Owner access required' });
+    return;
+  }
+
+  (request as any).group = {
+    id: group.id,
+    ownerId: group.ownerId,
+    members: group.members || [],
+    folder: group.folder,
+  };
 }
 
 export default async function authRoutes(fastify: FastifyInstance) {

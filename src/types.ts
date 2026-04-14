@@ -8,6 +8,7 @@ export interface ISessionInfo {
   workspace: string;
   agentId?: string;
   sdkSessionId?: string;
+  lastAssistantUuid?: string;
   configDir: string;
   workDir: string;
   tmpDir: string;
@@ -107,6 +108,8 @@ export interface IStreamEvent {
   error?: string;
   session_id?: string;
   timestamp: number;
+  hadCompaction?: boolean;
+  isMemoryFlush?: boolean;
 }
 
 export interface IClaudeQueryOptions {
@@ -156,6 +159,12 @@ export interface ITask {
   enabled: boolean;
   lastRunAt?: number;
   nextRunAt?: number;
+  executionType?: 'agent' | 'script';
+  contextMode?: 'group' | 'isolated';
+  scriptCommand?: string;
+  workspaceFolder?: string;
+  workspaceJid?: string;
+  createdBy?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -234,6 +243,20 @@ export interface IAgent {
   status?: 'idle' | 'running' | 'completed' | 'error';
   kind?: 'task' | 'conversation' | 'spawn';
   resultSummary?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ISubAgent {
+  id: string;
+  groupId: string;
+  name: string;
+  description?: string;
+  prompt: string;
+  model?: string;
+  tools?: string[];
+  isEnabled?: boolean;
+  status?: 'idle' | 'running' | 'completed' | 'error';
   createdAt: number;
   updatedAt: number;
 }

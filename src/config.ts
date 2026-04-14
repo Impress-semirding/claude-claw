@@ -36,6 +36,10 @@ export const appConfig = {
       : undefined,
     maxSessionsPerUser: parseInt(process.env.MAX_SESSIONS_PER_USER || '10', 10),
     maxIdleMs: parseInt(process.env.MAX_IDLE_MS || '30') * 60 * 1000, // 30 minutes
+    compactThreshold: parseInt(process.env.CLAUDE_COMPACT_THRESHOLD || '50', 10),
+    queryHardTimeoutMs: parseInt(process.env.CLAUDE_QUERY_HARD_TIMEOUT_MS || '1800000', 10), // 30 minutes
+    firstTokenTimeoutMs: parseInt(process.env.CLAUDE_FIRST_TOKEN_TIMEOUT_MS || '120000', 10), // 2 minutes
+    runnerWatchdogTimeoutMs: parseInt(process.env.CLAUDE_RUNNER_WATCHDOG_TIMEOUT_MS || '3600000', 10), // 60 minutes
   },
 
   // Security
@@ -90,3 +94,10 @@ import { mkdirSync } from 'fs';
     }
   }
 );
+
+// Production security checks
+if (appConfig.nodeEnv === 'production') {
+  if (!process.env.JWT_SECRET || appConfig.jwtSecret === 'change-this-in-production') {
+    throw new Error('JWT_SECRET environment variable must be set in production');
+  }
+}

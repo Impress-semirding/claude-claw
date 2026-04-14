@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { authMiddleware } from './auth.js';
+import { authMiddleware, groupAccessMiddleware, groupOwnerMiddleware } from './auth.js';
 import { groupDb, sessionDb, messageDb, userDb, groupEnvDb } from '../db.js';
 import { randomUUID } from 'crypto';
 import { mkdir, rm } from 'fs/promises';
@@ -11,6 +11,7 @@ import {
   stopWorkspace,
   waitForWorkspaceExit,
 } from '../services/process-registry.js';
+import { ensurePredefinedAgents } from '../services/agent-presets.js';
 import { validateAndResolvePath, isSystemPath } from './files.js';
 
 // Helper: 转换 Group 为前端格式
@@ -142,6 +143,9 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
       // 自动创建 session
       await getOrCreateSession(user.userId, groupId);
 
+      // 自动创建预定义 Sub-Agent
+      ensurePredefinedAgents(groupId);
+
       const groupInfo = toGroupInfo(group, user.userId);
       broadcastGroupCreated(groupId, folder, name, user.userId);
 
@@ -156,20 +160,16 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
   });
 
   // GET /api/groups/:jid - 获取群组详情
-  fastify.get('/:jid', { preHandler: authMiddleware }, async (request, reply) => {
+  fastify.get('/:jid', { preHandler: [authMiddleware, groupAccessMiddleware] }, async (request, reply) => {
     const user = request.user as { userId: string; email: string; role: string };
     const jid = (request.params as any).jid as string;
 
     try {
-      const group = groupDb.findById(jid);
+      const virtualMatch = jid.match(/^(.+)#agent:(.+)$/);
+      const groupJid = virtualMatch ? virtualMatch[1] : jid;
+      const group = groupDb.findById(groupJid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
-      }
-
-      // 检查权限
-      const members = group.members || [];
-      if (group.ownerId !== user.userId && !members.includes(user.userId)) {
-        return reply.status(403).send({ error: 'Forbidden' });
       }
 
       return reply.send({ group: toGroupInfo(group, user.userId) });
@@ -179,7 +179,7 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
   });
 
   // PATCH /api/groups/:jid - 更新群组
-  fastify.patch('/:jid', { preHandler: authMiddleware }, async (request, reply) => {
+  fastify.patch('/:jid', { preHandler: [authMiddleware, groupOwnerMiddleware] }, async (request, reply) => {
     const user = request.user as { userId: string; email: string; role: string };
     const jid = (request.params as any).jid as string;
 
@@ -187,11 +187,6 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
       const group = groupDb.findById(jid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
-      }
-
-      // 检查权限（只有 owner 可以修改）
-      if (group.ownerId !== user.userId) {
-        return reply.status(403).send({ error: 'Forbidden' });
       }
 
       const body = request.body as any;
@@ -229,19 +224,13 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /api/groups/:jid - 删除群组
-  fastify.delete('/:jid', { preHandler: authMiddleware }, async (request, reply) => {
-    const user = request.user as { userId: string; email: string; role: string };
+  fastify.delete('/:jid', { preHandler: [authMiddleware, groupOwnerMiddleware] }, async (request, reply) => {
     const jid = (request.params as any).jid as string;
 
     try {
       const group = groupDb.findById(jid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
-      }
-
-      // 检查权限
-      if (group.ownerId !== user.userId && user.role !== 'admin') {
-        return reply.status(403).send({ error: 'Forbidden' });
       }
 
       // 先停止该 workspace 下所有正在运行的隔离进程，并等待它们真正退出
@@ -303,59 +292,49 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
   });
 
   // GET /api/groups/:jid/messages - 获取消息
-  fastify.get('/:jid/messages', { preHandler: authMiddleware }, async (request, reply) => {
-    const user = request.user as { userId: string; email: string; role: string };
+  fastify.get('/:jid/messages', { preHandler: [authMiddleware, groupAccessMiddleware] }, async (request, reply) => {
     const jid = (request.params as any).jid as string;
 
     try {
-      const group = groupDb.findById(jid);
+      // Parse virtual JID: {groupJid}#agent:{agentId}
+      const virtualMatch = jid.match(/^(.+)#agent:(.+)$/);
+      const groupJid = virtualMatch ? virtualMatch[1] : jid;
+      const virtualAgentId = virtualMatch ? virtualMatch[2] : undefined;
+
+      const group = groupDb.findById(groupJid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
       }
 
-      // 检查权限
-      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-        return reply.status(403).send({ error: 'Forbidden' });
-      }
-
-      // 获取查询参数
       const before = (request.query as any).before as string | undefined;
       const after = (request.query as any).after as string | undefined;
       const limit = parseInt((request.query as any).limit || '50', 10);
-      const agentId = (request.query as any).agentId as string | undefined;
+      const queryAgentId = (request.query as any).agentId as string | undefined;
+      const agentId = virtualAgentId || queryAgentId;
 
       // 找到该群组的 session（按 agentId 过滤）
       const allSessions = sessionDb.findByUser('');
       const groupSessions = allSessions.filter((s: any) => {
-        if (s.workspace !== jid) return false;
+        if (s.workspace !== groupJid) return false;
         if (agentId) return s.agent_id === agentId || s.agentId === agentId;
         return !s.agent_id && !s.agentId;
       });
-      console.log('[groups/messages] jid=', jid, 'agentId=', agentId, 'groupSessions=', groupSessions.length, 'after=', after, 'before=', before, 'limit=', limit);
-
       // 获取所有消息
       let allMessages: any[] = [];
       for (const session of groupSessions) {
         const s = session as any;
         const msgs = messageDb.findBySession(s.id, 5000);
-        console.log('[groups/messages] session=', s.id, 'msgs=', msgs.length);
         allMessages = allMessages.concat(msgs.map((m) => ({ ...toMessage(m), chat_jid: jid })));
       }
 
       // 按时间排序
       allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      console.log('[groups/messages] totalMessages=', allMessages.length);
 
       // 应用过滤（防御式处理：统一转为数字毫秒比较，避免 Invalid Date）
       const afterTs = after ? new Date(after).getTime() : null;
       const beforeTs = before ? new Date(before).getTime() : null;
       if (afterTs && !Number.isNaN(afterTs)) {
-        const beforeFilter = allMessages.length;
-        const maxTs = beforeFilter > 0 ? Math.max(...allMessages.map((m) => new Date(m.timestamp).getTime())) : 0;
         allMessages = allMessages.filter((m) => new Date(m.timestamp).getTime() > afterTs);
-        if (allMessages.length === 0 && beforeFilter > 0) {
-          console.warn('[groups/messages] after filter dropped all messages. after=', after, 'afterTs=', afterTs, 'latestMsgTs=', maxTs);
-        }
       }
       if (beforeTs && !Number.isNaN(beforeTs)) {
         allMessages = allMessages.filter((m) => new Date(m.timestamp).getTime() < beforeTs);
@@ -366,7 +345,6 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
       // 限制数量
       const hasMore = allMessages.length > limit;
       const messages = allMessages.slice(-limit);
-      console.log('[groups/messages] returning', messages.length, 'messages, hasMore=', hasMore);
 
       return reply.send({ messages, hasMore });
     } catch (error) {
@@ -375,18 +353,13 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/groups/:jid/directories - 创建目录
-  fastify.post('/:jid/directories', { preHandler: authMiddleware }, async (request, reply) => {
-    const user = request.user as { userId: string; email: string; role: string };
+  fastify.post('/:jid/directories', { preHandler: [authMiddleware, groupAccessMiddleware] }, async (request, reply) => {
     const jid = (request.params as any).jid as string;
 
     try {
       const group = groupDb.findById(jid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
-      }
-
-      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-        return reply.status(403).send({ error: 'Forbidden' });
       }
 
       const body = request.body as any;
@@ -413,19 +386,13 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /api/groups/:jid/messages/:id - 删除消息
-  fastify.delete('/:jid/messages/:id', { preHandler: authMiddleware }, async (request, reply) => {
-    const user = request.user as { userId: string; email: string; role: string };
+  fastify.delete('/:jid/messages/:id', { preHandler: [authMiddleware, groupAccessMiddleware] }, async (request, reply) => {
     const jid = (request.params as any).jid as string;
 
     try {
       const group = groupDb.findById(jid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
-      }
-
-      // 检查权限
-      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-        return reply.status(403).send({ error: 'Forbidden' });
       }
 
       // TODO: 实现消息删除
@@ -436,19 +403,13 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
   });
 
   // GET /api/groups/:jid/members - 获取成员
-  fastify.get('/:jid/members', { preHandler: authMiddleware }, async (request, reply) => {
-    const user = request.user as { userId: string; email: string; role: string };
+  fastify.get('/:jid/members', { preHandler: [authMiddleware, groupAccessMiddleware] }, async (request, reply) => {
     const jid = (request.params as any).jid as string;
 
     try {
       const group = groupDb.findById(jid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
-      }
-
-      // 检查权限
-      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-        return reply.status(403).send({ error: 'Forbidden' });
       }
 
       // 构建成员列表
@@ -488,8 +449,7 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
   });
 
   // GET /api/groups/:jid/members/search - 搜索可添加用户
-  fastify.get('/:jid/members/search', { preHandler: authMiddleware }, async (request, reply) => {
-    const user = request.user as { userId: string; email: string; role: string };
+  fastify.get('/:jid/members/search', { preHandler: [authMiddleware, groupOwnerMiddleware] }, async (request, reply) => {
     const jid = (request.params as any).jid as string;
     const q = ((request.query as any).q as string) || '';
 
@@ -497,10 +457,6 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
       const group = groupDb.findById(jid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
-      }
-
-      if (group.ownerId !== user.userId) {
-        return reply.status(403).send({ error: 'Forbidden' });
       }
 
       const allUsers = userDb.findActive();
@@ -526,19 +482,13 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/groups/:jid/members - 添加成员
-  fastify.post('/:jid/members', { preHandler: authMiddleware }, async (request, reply) => {
-    const user = request.user as { userId: string; email: string; role: string };
+  fastify.post('/:jid/members', { preHandler: [authMiddleware, groupOwnerMiddleware] }, async (request, reply) => {
     const jid = (request.params as any).jid as string;
 
     try {
       const group = groupDb.findById(jid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
-      }
-
-      // 检查权限（只有 owner 可以添加成员）
-      if (group.ownerId !== user.userId) {
-        return reply.status(403).send({ error: 'Forbidden' });
       }
 
       const body = request.body as any;
@@ -573,7 +523,7 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
           username: owner.email,
           display_name: owner.name,
           role: 'owner',
-          joined_at: new Date(updated.createdAt).toISOString(),
+          joined_at: toISOString(updated.createdAt ?? (updated as any).created_at),
         });
       }
       for (const memberId of updated.members) {
@@ -584,7 +534,7 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
             username: member.email,
             display_name: member.name,
             role: 'member',
-            joined_at: new Date(updated.createdAt).toISOString(),
+            joined_at: toISOString(updated.createdAt ?? (updated as any).created_at),
           });
         }
       }
@@ -596,7 +546,7 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
   });
 
   // DELETE /api/groups/:jid/members/:id - 移除成员
-  fastify.delete('/:jid/members/:id', { preHandler: authMiddleware }, async (request, reply) => {
+  fastify.delete('/:jid/members/:id', { preHandler: [authMiddleware, groupAccessMiddleware] }, async (request, reply) => {
     const user = request.user as { userId: string; email: string; role: string };
     const jid = (request.params as any).jid as string;
     const memberId = (request.params as any).id as string;
@@ -631,7 +581,7 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
           username: owner.email,
           display_name: owner.name,
           role: 'owner',
-          joined_at: new Date(updated.createdAt).toISOString(),
+          joined_at: toISOString(updated.createdAt ?? (updated as any).created_at),
         });
       }
       for (const mId of updated.members) {
@@ -642,7 +592,7 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
             username: member.email,
             display_name: member.name,
             role: 'member',
-            joined_at: new Date(updated.createdAt).toISOString(),
+            joined_at: toISOString(updated.createdAt ?? (updated as any).created_at),
           });
         }
       }
@@ -654,18 +604,13 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
   });
 
   // GET /api/groups/:jid/env - 获取环境变量
-  fastify.get('/:jid/env', { preHandler: authMiddleware }, async (request, reply) => {
-    const user = request.user as { userId: string; email: string; role: string };
+  fastify.get('/:jid/env', { preHandler: [authMiddleware, groupAccessMiddleware] }, async (request, reply) => {
     const jid = (request.params as any).jid as string;
 
     try {
       const group = groupDb.findById(jid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
-      }
-
-      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-        return reply.status(403).send({ error: 'Forbidden' });
       }
 
       const env = groupEnvDb.findById(jid) || {};
@@ -677,18 +622,13 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
   });
 
   // PUT /api/groups/:jid/env - 更新环境变量
-  fastify.put('/:jid/env', { preHandler: authMiddleware }, async (request, reply) => {
-    const user = request.user as { userId: string; email: string; role: string };
+  fastify.put('/:jid/env', { preHandler: [authMiddleware, groupOwnerMiddleware] }, async (request, reply) => {
     const jid = (request.params as any).jid as string;
 
     try {
       const group = groupDb.findById(jid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
-      }
-
-      if (group.ownerId !== user.userId) {
-        return reply.status(403).send({ error: 'Forbidden' });
       }
 
       const body = request.body as any;
@@ -702,19 +642,13 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/groups/:jid/stop - 停止群组
-  fastify.post('/:jid/stop', { preHandler: authMiddleware }, async (request, reply) => {
-    const user = request.user as { userId: string; email: string; role: string };
+  fastify.post('/:jid/stop', { preHandler: [authMiddleware, groupAccessMiddleware] }, async (request, reply) => {
     const jid = (request.params as any).jid as string;
 
     try {
       const group = groupDb.findById(jid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
-      }
-
-      // 检查权限
-      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-        return reply.status(403).send({ error: 'Forbidden' });
       }
 
       // Kill any active isolated processes for this group
@@ -736,19 +670,13 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/groups/:jid/interrupt - 中断查询
-  fastify.post('/:jid/interrupt', { preHandler: authMiddleware }, async (request, reply) => {
-    const user = request.user as { userId: string; email: string; role: string };
+  fastify.post('/:jid/interrupt', { preHandler: [authMiddleware, groupAccessMiddleware] }, async (request, reply) => {
     const jid = (request.params as any).jid as string;
 
     try {
       const group = groupDb.findById(jid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
-      }
-
-      // 检查权限
-      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-        return reply.status(403).send({ error: 'Forbidden' });
       }
 
       // 检查是否有活跃的 session
@@ -762,10 +690,10 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
       // Kill any active isolated processes for this group
       stopWorkspace(jid, true);
 
-      // 更新 session 状态
+      // Graceful interrupt via sentinel for persistent runners
       for (const session of activeSessions) {
         const s = session as any;
-        sessionDb.update(s.id, { status: 'idle' });
+        abortQuery(s.user_id, jid, s.id);
       }
 
       return reply.send({ success: true, interrupted: true });
@@ -775,19 +703,13 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/groups/:jid/reset-session - 重置会话
-  fastify.post('/:jid/reset-session', { preHandler: authMiddleware }, async (request, reply) => {
-    const user = request.user as { userId: string; email: string; role: string };
+  fastify.post('/:jid/reset-session', { preHandler: [authMiddleware, groupAccessMiddleware] }, async (request, reply) => {
     const jid = (request.params as any).jid as string;
 
     try {
       const group = groupDb.findById(jid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
-      }
-
-      // 检查权限
-      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-        return reply.status(403).send({ error: 'Forbidden' });
       }
 
       // 先停止该 workspace 下所有正在运行的隔离进程和中断查询
@@ -814,19 +736,13 @@ export default async function groupsRoutes(fastify: FastifyInstance) {
   });
 
   // POST /api/groups/:jid/clear-history - 清空历史
-  fastify.post('/:jid/clear-history', { preHandler: authMiddleware }, async (request, reply) => {
-    const user = request.user as { userId: string; email: string; role: string };
+  fastify.post('/:jid/clear-history', { preHandler: [authMiddleware, groupAccessMiddleware] }, async (request, reply) => {
     const jid = (request.params as any).jid as string;
 
     try {
       const group = groupDb.findById(jid);
       if (!group) {
         return reply.status(404).send({ error: 'Group not found' });
-      }
-
-      // 检查权限
-      if (group.ownerId !== user.userId && !group.members.includes(user.userId)) {
-        return reply.status(403).send({ error: 'Forbidden' });
       }
 
       // 删除该群组的所有消息

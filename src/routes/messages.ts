@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { authMiddleware } from './auth.js';
-import { groupDb, messageDb, mcpServerDb, agentDb } from '../db.js';
+import { groupDb, messageDb, mcpServerDb } from '../db.js';
 import { randomUUID } from 'crypto';
 import { resolve } from 'path';
-import { existsSync, readFileSync } from 'fs';
 import { appConfig } from '../config.js';
+import { logger } from '../logger.js';
 import {
   querySession,
   getOrCreateSession,
@@ -17,15 +17,42 @@ import {
   broadcastTyping,
 } from '../services/ws.service.js';
 import type { WsClientInfo } from '../services/ws.service.js';
-import type { IStreamEvent } from '../types.js';
+import { resolveAgent } from '../services/agent-presets.js';
+import { ClaudeAgent, AgentEnvironment } from '../services/agent.js';
 
 // Track running queries per group to broadcast runner_state
 const runningQueries = new Map<string, boolean>();
+const autoContinueCounts = new Map<string, number>();
+const autoContinueLastEmpty = new Map<string, boolean>();
+const pendingUserQueries = new Map<string, number>();
+
+function incrementPendingQuery(sessionId: string): void {
+  pendingUserQueries.set(sessionId, (pendingUserQueries.get(sessionId) || 0) + 1);
+}
+
+function decrementPendingQuery(sessionId: string): void {
+  const next = (pendingUserQueries.get(sessionId) || 0) - 1;
+  if (next <= 0) {
+    pendingUserQueries.delete(sessionId);
+    autoContinueCounts.delete(sessionId);
+    autoContinueLastEmpty.delete(sessionId);
+  } else {
+    pendingUserQueries.set(sessionId, next);
+  }
+}
 
 interface SendMessageResult {
   ok: true;
   messageId: string;
   timestamp: string;
+}
+
+function parseVirtualJid(chatJid: string): { groupJid: string; agentId?: string } {
+  const match = chatJid.match(/^(.+)#agent:(.+)$/);
+  if (match) {
+    return { groupJid: match[1], agentId: match[2] };
+  }
+  return { groupJid: chatJid };
 }
 
 async function handleMessageSend(
@@ -34,10 +61,14 @@ async function handleMessageSend(
   chatJid: string,
   content: string,
   attachments?: unknown[],
-  agentId?: string
+  explicitAgentId?: string
 ): Promise<SendMessageResult | { ok: false; error: string; status: number }> {
+  // Parse virtual JID: {groupJid}#agent:{agentId}
+  const { groupJid, agentId: virtualAgentId } = parseVirtualJid(chatJid);
+  const agentId = explicitAgentId || virtualAgentId;
+
   // Check group
-  const group = groupDb.findById(chatJid);
+  const group = groupDb.findById(groupJid);
   if (!group) {
     return { ok: false, error: 'Group not found', status: 404 };
   }
@@ -47,8 +78,8 @@ async function handleMessageSend(
     return { ok: false, error: 'Forbidden', status: 403 };
   }
 
-  // Get or create session for this group (scoped by agentId)
-  const session = await getOrCreateSession(userId, chatJid, undefined, agentId);
+  // Get or create session for this group (scoped by agentId), using actual groupJid as workspace
+  const session = await getOrCreateSession(userId, groupJid, undefined, agentId);
 
   const messageId = randomUUID();
   const timestamp = new Date().toISOString();
@@ -60,9 +91,9 @@ async function handleMessageSend(
     timestamp,
     agentId,
   });
-  console.log('[messages] saved user message', { messageId, sessionId: session.sessionId, chatJid, agentId });
+  logger.info({ messageId, sessionId: session.sessionId, chatJid, agentId, groupJid }, '[messages] saved user message');
 
-  // Broadcast new_message immediately
+  // Broadcast new_message immediately (use original chatJid so virtual JID tabs receive it)
   const userMsgPayload = {
     id: messageId,
     chat_jid: chatJid,
@@ -75,7 +106,7 @@ async function handleMessageSend(
     source_kind: 'user_message',
     session_id: session.sessionId,
   };
-  console.log('[messages] broadcasting user new_message', JSON.stringify(userMsgPayload));
+  logger.info(userMsgPayload, '[messages] broadcasting user new_message');
   broadcastNewMessage(chatJid, userMsgPayload, agentId);
 
   // Get enabled MCP servers for this user/group and shape them for the SDK
@@ -97,119 +128,159 @@ async function handleMessageSend(
     }
   }
 
-  // Build system prompt: global memory + group system prompt
+  // Resolve agent and build environment
+  const agent = resolveAgent(groupJid, agentId);
   const groupConfig = group.config || {};
-  let systemPrompt = groupConfig.systemPrompt || '';
+  const workspaceDir = resolve(appConfig.claude.baseDir, group.folder || '');
+  const userGlobalPath = resolve(appConfig.dataDir, 'groups', 'user-global', userId, 'CLAUDE.md');
 
-  // Read user global memory (data/groups/user-global/{userId}/CLAUDE.md)
-  const globalMemoryDir = resolve(appConfig.dataDir, 'groups', 'user-global', userId);
-  const globalMemoryPath = resolve(globalMemoryDir, 'CLAUDE.md');
-  if (existsSync(globalMemoryPath)) {
-    const memoryContent = readFileSync(globalMemoryPath, 'utf-8');
-    if (memoryContent.trim()) {
-      systemPrompt = systemPrompt
-        ? `${memoryContent.trim()}\n\n${systemPrompt}`
-        : memoryContent.trim();
-    }
-  }
-
-  // Add agent-specific prompt for conversation agents
-  if (agentId) {
-    const agent = agentDb.findById(agentId);
-    if (agent?.prompt) {
-      systemPrompt = systemPrompt
-        ? `${agent.prompt.trim()}\n\n${systemPrompt}`
-        : agent.prompt.trim();
-    }
-  }
-
-  const mcpNames = Object.keys(enabledMcpServers);
-  console.log('[messages] startQuery', {
+  const env: AgentEnvironment = {
     userId,
-    chatJid,
-    sessionId: session.sessionId,
-    agentId,
-    promptLength: content.length,
-    systemPromptLength: systemPrompt.length,
-    mcpCount: mcpNames.length,
-    mcpNames,
-  });
-  console.log('[messages] mcpPayload:', JSON.stringify(enabledMcpServers));
+    email: displayName,
+    chatJid: groupJid,
+    workspaceDir,
+    userGlobalPath,
+    groupConfig,
+  };
 
-  startQuery(userId, chatJid, session.sessionId, content, enabledMcpServers, systemPrompt, agentId);
+  // Reset auto-continue counter for user-initiated messages
+  autoContinueCounts.delete(session.sessionId);
+
+  // Fire-and-forget the agent query (broadcast with original chatJid for virtual JID routing)
+  incrementPendingQuery(session.sessionId);
+  runAgentQuery(agent, env, session.sessionId, content, enabledMcpServers, chatJid, agentId, true);
 
   return { ok: true, messageId, timestamp };
 }
 
-async function startQuery(
-  userId: string,
-  chatJid: string,
+export async function runAgentQuery(
+  agent: ClaudeAgent,
+  env: AgentEnvironment,
   sessionId: string,
-  prompt: string,
+  content: string,
   mcpServers: Record<string, unknown>,
-  systemPrompt?: string,
-  agentId?: string
-): Promise<void> {
-  const queryKey = agentId ? `${chatJid}:${agentId}` : chatJid;
-  if (runningQueries.get(queryKey)) {
-    return;
-  }
+  chatJid: string,
+  agentId?: string,
+  isUserQuery = false
+): Promise<import('../services/agent.js').AgentQueryResult | undefined> {
 
-  runningQueries.set(queryKey, true);
+  runningQueries.set(sessionId, true);
   broadcastRunnerState(chatJid, 'running', agentId);
   broadcastTyping(chatJid, true, agentId);
 
-  let assistantText = '';
   let turnId = `turn-${Date.now()}`;
+  let result: import('../services/agent.js').AgentQueryResult | undefined;
 
   const mcpNames = Object.keys(mcpServers);
-  console.log('[messages] startQuery', { userId, chatJid, sessionId, agentId, promptLength: prompt.length, mcpCount: mcpNames.length, mcpNames });
+  logger.info({
+    userId: env.userId,
+    chatJid,
+    sessionId,
+    agentId,
+    promptLength: content.length,
+    mcpCount: mcpNames.length,
+    mcpNames,
+  }, '[messages] runAgentQuery');
 
   try {
-    const stream = querySession({
-      userId,
-      workspace: chatJid,
+    result = await agent.query(env, content, {
       sessionId,
-      prompt,
       mcpServers,
-      systemPrompt,
       onStreamEvent: (ev) => {
         broadcastStreamEvent(chatJid, ev, agentId);
         if (ev.eventType === 'text_delta' || ev.eventType === 'thinking_delta') {
           broadcastTyping(chatJid, false, agentId);
         }
       },
-      turnId,
+      onTypingChange: (isTyping) => {
+        broadcastTyping(chatJid, isTyping, agentId);
+      },
     });
 
-    for await (const event of stream) {
-      console.log('[messages] stream event', event.type, event.subtype || '');
-      const ev = event as IStreamEvent;
+    turnId = result.turnId;
 
-      if (ev.type === 'system' && ev.subtype === 'init') {
-        continue;
-      }
-
-      if (ev.type === 'assistant' && ev.content) {
-        assistantText = ev.content;
-      } else if (ev.type === 'error') {
-        broadcastStreamEvent(chatJid, {
-          eventType: 'error',
-          error: ev.error || 'Unknown error',
+    if (result.error) {
+      logger.error({ error: result.error }, '[messages] agent query error');
+      const errorMsgId = randomUUID();
+      const errorTimestamp = new Date().toISOString();
+      const errorContent = `⚠️ ${result.error}`;
+      messageDb.create({
+        id: errorMsgId,
+        sessionId,
+        userId: '__assistant__',
+        role: 'assistant',
+        content: errorContent,
+        metadata: {
+          senderName: 'Claude',
           turnId,
-        }, agentId);
-      } else if (ev.type === 'complete') {
-        broadcastStreamEvent(chatJid, {
-          eventType: 'complete',
-          turnId,
-        }, agentId);
-      }
+          timestamp: errorTimestamp,
+          sourceKind: 'agent_error',
+          finalizationReason: 'error',
+          agentId,
+        },
+      });
+      broadcastNewMessage(chatJid, {
+        id: errorMsgId,
+        chat_jid: chatJid,
+        sender: '__assistant__',
+        sender_name: 'Claude',
+        content: errorContent,
+        timestamp: errorTimestamp,
+        is_from_me: true,
+        turn_id: turnId,
+        session_id: sessionId,
+        sdk_message_uuid: null,
+        source_kind: 'agent_error',
+        finalization_reason: 'error',
+      }, agentId);
     }
 
-    console.log('[messages] stream loop ended, assistantText.length=', assistantText.trim().length);
+    // Handle overflow partial recovery
+    if (result.contextOverflow && result.assistantText) {
+      logger.info({ length: result.assistantText.trim().length }, '[messages] saving overflow_partial');
+      const partialMsgId = randomUUID();
+      const partialTimestamp = new Date().toISOString();
+      messageDb.create({
+        id: partialMsgId,
+        sessionId,
+        userId: '__assistant__',
+        role: 'assistant',
+        content: result.assistantText.trim(),
+        metadata: {
+          senderName: 'Claude',
+          turnId,
+          timestamp: partialTimestamp,
+          sourceKind: 'overflow_partial',
+          finalizationReason: 'context_overflow',
+          agentId,
+        },
+      });
 
-    if (assistantText.trim()) {
-      console.log('[messages] saving assistant message, length', assistantText.trim().length);
+      broadcastNewMessage(chatJid, {
+        id: partialMsgId,
+        chat_jid: chatJid,
+        sender: '__assistant__',
+        sender_name: 'Claude',
+        content: result.assistantText.trim() + '\n\n_（上下文溢出，部分回复已保存）_',
+        timestamp: partialTimestamp,
+        is_from_me: true,
+        turn_id: turnId,
+        session_id: sessionId,
+        sdk_message_uuid: null,
+        source_kind: 'overflow_partial',
+        finalization_reason: 'context_overflow',
+      }, agentId);
+      return;
+    }
+
+    // Handle unrecoverable errors
+    if (result.unrecoverableError) {
+      logger.info('[messages] unrecoverable error, not saving assistant message');
+      return;
+    }
+
+    if (result.assistantText.trim()) {
+      logger.info({ length: result.assistantText.trim().length }, '[messages] saving assistant message');
       const assistantMsgId = randomUUID();
       const assistantTimestamp = new Date().toISOString();
       messageDb.create({
@@ -217,7 +288,7 @@ async function startQuery(
         sessionId,
         userId: '__assistant__',
         role: 'assistant',
-        content: assistantText.trim(),
+        content: result.assistantText.trim(),
         metadata: {
           senderName: 'Claude',
           turnId,
@@ -228,13 +299,13 @@ async function startQuery(
         },
       });
 
-      console.log('[messages] broadcasting new_message for assistant reply, chatJid=', chatJid, 'agentId=', agentId, 'msgId=', assistantMsgId);
+      logger.info({ chatJid, agentId, msgId: assistantMsgId }, '[messages] broadcasting new_message for assistant reply');
       broadcastNewMessage(chatJid, {
         id: assistantMsgId,
         chat_jid: chatJid,
         sender: '__assistant__',
         sender_name: 'Claude',
-        content: assistantText.trim(),
+        content: result.assistantText.trim(),
         timestamp: assistantTimestamp,
         is_from_me: true,
         turn_id: turnId,
@@ -243,22 +314,179 @@ async function startQuery(
         source_kind: 'sdk_final',
         finalization_reason: 'completed',
       }, agentId);
-      console.log('[messages] broadcast complete');
+      logger.info('[messages] broadcast complete');
     } else {
-      console.log('[messages] no assistant text to save, text length=0');
+      logger.info('[messages] no assistant text to save, text length=0');
     }
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error('[messages] startQuery error', errorMsg);
+    logger.error({ error: errorMsg }, '[messages] runAgentQuery error');
     broadcastStreamEvent(chatJid, {
       eventType: 'error',
       error: errorMsg,
       turnId,
     }, agentId);
+
+    // Persist error message so the user sees what happened
+    const errorMsgId = randomUUID();
+    const errorTimestamp = new Date().toISOString();
+    const errorContent = `⚠️ ${errorMsg}`;
+    messageDb.create({
+      id: errorMsgId,
+      sessionId,
+      userId: '__assistant__',
+      role: 'assistant',
+      content: errorContent,
+      metadata: {
+        senderName: 'Claude',
+        turnId,
+        timestamp: errorTimestamp,
+        sourceKind: 'agent_error',
+        finalizationReason: 'error',
+        agentId,
+      },
+    });
+    broadcastNewMessage(chatJid, {
+      id: errorMsgId,
+      chat_jid: chatJid,
+      sender: '__assistant__',
+      sender_name: 'Claude',
+      content: errorContent,
+      timestamp: errorTimestamp,
+      is_from_me: true,
+      turn_id: turnId,
+      session_id: sessionId,
+      sdk_message_uuid: null,
+      source_kind: 'agent_error',
+      finalization_reason: 'error',
+    }, agentId);
   } finally {
-    runningQueries.delete(queryKey);
+    runningQueries.delete(sessionId);
     broadcastRunnerState(chatJid, 'idle', agentId);
     broadcastTyping(chatJid, false, agentId);
+
+    if (isUserQuery) {
+      decrementPendingQuery(sessionId);
+    }
+
+    if (result?.hadCompaction) {
+      // Fire-and-forget so new user messages can acquire the session lock first
+      Promise.resolve().then(async () => {
+        if (pendingUserQueries.has(sessionId)) {
+          logger.info({ sessionId }, '[messages] skipping auto-continue because pending user queries exist');
+          return;
+        }
+        try {
+          const systemPrompt = await agent.buildSystemPrompt(env);
+          await runMemoryFlush(env.userId, chatJid, sessionId, mcpServers, systemPrompt);
+          if (pendingUserQueries.has(sessionId)) {
+            logger.info({ sessionId }, '[messages] skipping auto-continue because user queries arrived during memory flush');
+            return;
+          }
+          await maybeAutoContinue(agent, env, sessionId, mcpServers, chatJid, agentId);
+        } catch (err) {
+          logger.error({ err }, '[messages] auto-continue chain error');
+        }
+      });
+    }
+  }
+  return result;
+}
+
+async function maybeAutoContinue(
+  agent: ClaudeAgent,
+  env: AgentEnvironment,
+  sessionId: string,
+  mcpServers: Record<string, unknown>,
+  chatJid: string,
+  agentId?: string
+): Promise<void> {
+  if (pendingUserQueries.has(sessionId)) {
+    logger.info({ sessionId }, '[messages] canceling auto-continue because a user query arrived');
+    autoContinueCounts.delete(sessionId);
+    autoContinueLastEmpty.delete(sessionId);
+    return;
+  }
+  const count = autoContinueCounts.get(sessionId) || 0;
+  if (count >= 3) {
+    logger.info({ sessionId }, '[messages] auto-continue limit reached');
+    autoContinueCounts.delete(sessionId);
+    autoContinueLastEmpty.delete(sessionId);
+    return;
+  }
+  if (autoContinueLastEmpty.get(sessionId)) {
+    logger.info({ sessionId }, '[messages] last auto-continue produced no text, stopping chain');
+    autoContinueCounts.delete(sessionId);
+    autoContinueLastEmpty.delete(sessionId);
+    return;
+  }
+  autoContinueCounts.set(sessionId, count + 1);
+  logger.info({ sessionId, count: count + 1 }, '[messages] auto-continue triggered');
+
+  broadcastStreamEvent(chatJid, {
+    eventType: 'status',
+    statusText: '上下文已压缩，Agent 正在自动继续…',
+    turnId: `turn-${Date.now()}`,
+  }, agentId);
+  broadcastTyping(chatJid, true, agentId);
+
+  const result = await runAgentQuery(agent, env, sessionId, '继续', mcpServers, chatJid, agentId);
+  if (!result?.assistantText.trim()) {
+    autoContinueLastEmpty.set(sessionId, true);
+  }
+}
+
+/**
+ * Run memory flush query after compaction (inspired by happyclaw)
+ * This is a background operation that updates CLAUDE.md and memory files.
+ */
+async function runMemoryFlush(
+  userId: string,
+  chatJid: string,
+  sessionId: string,
+  mcpServers: Record<string, unknown>,
+  systemPrompt: string
+): Promise<void> {
+  const flushKey = `flush:${sessionId}`;
+  if (runningQueries.get(flushKey)) {
+    logger.info('[messages] memory flush already running, skipping');
+    return;
+  }
+
+  runningQueries.set(flushKey, true);
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const flushPrompt = [
+      '上下文压缩前记忆刷新。',
+      '**优先检查全局记忆**：先 Read /workspace/global/CLAUDE.md，如果有「待记录」字段且你已获知对应信息（用户身份、偏好、常用项目等），用 Edit 工具立即填写。',
+      '用户明确要求记住的内容，以及下次对话仍可能用到的信息，也写入全局记忆。',
+      `然后使用 memory_append 将时效性记忆保存到 memory/${today}.md（今日进展、临时决策、待办等）。`,
+      '如需确认上下文，可先用 memory_search/memory_get 查阅。',
+      '如果没有值得保存的内容，回复一个字：OK。',
+    ].join(' ');
+
+    logger.info('[messages] starting memory flush query');
+
+    const stream = querySession({
+      userId,
+      workspace: chatJid,
+      sessionId,
+      prompt: flushPrompt,
+      mcpServers,
+      systemPrompt,
+      isMemoryFlush: true,
+    });
+
+    // Consume the stream but don't broadcast to user
+    for await (const _event of stream) {
+      // Silently consume
+    }
+
+    logger.info('[messages] memory flush completed');
+  } catch (err) {
+    logger.error({ err }, '[messages] memory flush error');
+  } finally {
+    runningQueries.delete(flushKey);
   }
 }
 

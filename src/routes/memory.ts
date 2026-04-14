@@ -8,6 +8,7 @@ import { groupDb, userDb } from '../db.js';
 
 // --- Constants ---
 const GROUPS_DIR = resolve(appConfig.dataDir, 'groups');
+const WORKSPACE_DIR = resolve(appConfig.claude.baseDir);
 const USER_GLOBAL_DIR = path.join(GROUPS_DIR, 'user-global');
 const MEMORY_DATA_DIR = path.join(appConfig.dataDir, 'memory');
 const MAX_GLOBAL_MEMORY_LENGTH = 200_000;
@@ -98,7 +99,8 @@ function resolveMemoryPath(
   const absolute = path.resolve(process.cwd(), relativePath);
   const inGroups = isWithinRoot(absolute, GROUPS_DIR);
   const inMemoryData = isWithinRoot(absolute, MEMORY_DATA_DIR);
-  const writable = inGroups || inMemoryData;
+  const inWorkspace = isWithinRoot(absolute, WORKSPACE_DIR);
+  const writable = inGroups || inMemoryData || inWorkspace;
 
   if (!writable) {
     throw new Error('Memory path out of allowed scope');
@@ -121,6 +123,12 @@ function resolveMemoryPath(
     } else if (inMemoryData) {
       const relToMemory = path.relative(MEMORY_DATA_DIR, absolute);
       const folder = relToMemory.split(path.sep)[0];
+      if (!isUserOwnedFolder(user, folder)) {
+        throw new Error('Memory path out of allowed scope');
+      }
+    } else if (inWorkspace) {
+      const relToWorkspace = path.relative(WORKSPACE_DIR, absolute);
+      const folder = relToWorkspace.split(path.sep)[0];
       if (!isUserOwnedFolder(user, folder)) {
         throw new Error('Memory path out of allowed scope');
       }
@@ -198,6 +206,17 @@ function classifyMemorySource(
     return {
       type: 'conversation',
       label: `${folder} / 对话归档 / ${name}`,
+      folder,
+    };
+  }
+
+  // data/sessions/{folder}/... (workspace session memory)
+  if (parts[0] === 'data' && parts[1] === 'sessions') {
+    const folder = parts[2] || 'unknown';
+    const name = parts.slice(3).join('/');
+    return {
+      type: 'session',
+      label: `${folder} / ${name}`,
       folder,
     };
   }
@@ -357,9 +376,30 @@ function listMemorySources(user: { id: string; role: string }): MemorySource[] {
   // 2. Group CLAUDE.md files
   for (const folder of accessibleFolders) {
     files.add(path.join(GROUPS_DIR, folder, 'CLAUDE.md'));
+    files.add(path.join(WORKSPACE_DIR, folder, 'CLAUDE.md'));
   }
 
-  // 3. Scan group workspace directories (skips system dirs)
+  // 3. Explicitly scan .claude/rules/ (walkFiles skips .claude)
+  for (const folder of accessibleFolders) {
+    const rulesDir = path.join(GROUPS_DIR, folder, '.claude', 'rules');
+    if (fs.existsSync(rulesDir)) {
+      const scanned: string[] = [];
+      walkFiles(rulesDir, 4, MEMORY_LIST_LIMIT, scanned);
+      for (const f of scanned) {
+        if (isMemoryCandidateFile(f)) files.add(f);
+      }
+    }
+    const workspaceRulesDir = path.join(WORKSPACE_DIR, folder, '.claude', 'rules');
+    if (fs.existsSync(workspaceRulesDir)) {
+      const scanned: string[] = [];
+      walkFiles(workspaceRulesDir, 4, MEMORY_LIST_LIMIT, scanned);
+      for (const f of scanned) {
+        if (isMemoryCandidateFile(f)) files.add(f);
+      }
+    }
+  }
+
+  // 4. Scan group workspace directories (skips system dirs)
   for (const folder of accessibleFolders) {
     const folderDir = path.join(GROUPS_DIR, folder);
     const scanned: string[] = [];
@@ -367,9 +407,15 @@ function listMemorySources(user: { id: string; role: string }): MemorySource[] {
     for (const f of scanned) {
       if (isMemoryCandidateFile(f)) files.add(f);
     }
+    const workspaceDir = path.join(WORKSPACE_DIR, folder);
+    const workspaceScanned: string[] = [];
+    walkFiles(workspaceDir, 4, MEMORY_LIST_LIMIT, workspaceScanned);
+    for (const f of workspaceScanned) {
+      if (isMemoryCandidateFile(f)) files.add(f);
+    }
   }
 
-  // 4. Scan data/memory/ (date memory files)
+  // 5. Scan data/memory/ (date memory files)
   if (fs.existsSync(MEMORY_DATA_DIR)) {
     const memFolders = fs.readdirSync(MEMORY_DATA_DIR, { withFileTypes: true });
     for (const d of memFolders) {
@@ -388,7 +434,7 @@ function listMemorySources(user: { id: string; role: string }): MemorySource[] {
     }
   }
 
-  // 5. Scan conversations/ directories (read-only archives)
+  // 6. Scan conversations/ directories (read-only archives)
   for (const folder of accessibleFolders) {
     const convDir = path.join(GROUPS_DIR, folder, 'conversations');
     if (!fs.existsSync(convDir)) continue;
@@ -409,7 +455,8 @@ function listMemorySources(user: { id: string; role: string }): MemorySource[] {
   for (const absolutePath of files) {
     const inGroups = isWithinRoot(absolutePath, GROUPS_DIR);
     const inMemoryData = isWithinRoot(absolutePath, MEMORY_DATA_DIR);
-    if (!inGroups && !inMemoryData) continue;
+    const inWorkspace = isWithinRoot(absolutePath, WORKSPACE_DIR);
+    if (!inGroups && !inMemoryData && !inWorkspace) continue;
 
     const relativePath = path
       .relative(process.cwd(), absolutePath)

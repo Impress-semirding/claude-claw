@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'child_process';
-import { mkdirSync, writeFileSync, existsSync } from 'fs';
+import { mkdirSync, writeFileSync, existsSync, renameSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { tmpdir } from 'os';
 import { appConfig } from '../../config.js';
@@ -15,8 +15,7 @@ function getProfilePath(workspaceId: string): string {
   return resolve(ISOLATION_BASE_DIR, 'profiles', `${workspaceId}.sb`);
 }
 
-function generateSandboxProfile(workspaceDir: string): string {
-  const homeDir = process.env.HOME || '/tmp';
+function generateSandboxProfile(dirs: { workspaceGroup?: string; workspaceGlobal?: string; workspaceMemory?: string; workspaceIpc?: string; configDir?: string; tmpDir?: string }): string {
   const sysTmpDir = tmpdir();
 
   const lines: string[] = [
@@ -28,18 +27,27 @@ function generateSandboxProfile(workspaceDir: string): string {
     '; Deny all writes by default to enforce directory isolation',
     '(deny file-write*)',
     '',
-    '; Allow writes to workspace',
-    `(allow file-write* (subpath "${workspaceDir}"))`,
-    '',
-    '; Allow writes to system tmp',
-    `(allow file-write* (subpath "${sysTmpDir}"))`,
-    '',
-    '; Allow writes to home (for npm cache, claude config, etc.)',
-    `(allow file-write* (subpath "${homeDir}"))`,
+  ];
+
+  const writePaths = [
+    dirs.workspaceGroup,
+    dirs.workspaceGlobal,
+    dirs.workspaceMemory,
+    dirs.workspaceIpc,
+    dirs.configDir,
+    dirs.tmpDir,
+    sysTmpDir,
+  ].filter((d): d is string => typeof d === 'string' && d.length > 0);
+
+  for (const p of writePaths) {
+    lines.push(`(allow file-write* (subpath "${p}"))`);
+  }
+
+  lines.push(
     '',
     '; Allow writing to common devices',
     '(allow file-write-data (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty") (literal "/dev/urandom") (literal "/dev/random"))',
-  ];
+  );
 
   return lines.join('\n');
 }
@@ -53,7 +61,7 @@ export class SandboxExecIsolator implements WorkspaceIsolator {
     mkdirSync(dirname(profilePath), { recursive: true });
 
     if (!existsSync(profilePath)) {
-      const profile = generateSandboxProfile(workspaceDir);
+      const profile = generateSandboxProfile({ workspaceGroup: workspaceDir });
       writeFileSync(profilePath, profile, 'utf-8');
     }
   }
@@ -62,12 +70,19 @@ export class SandboxExecIsolator implements WorkspaceIsolator {
     const workspaceId = options.workspaceId || options.cwd;
     const profilePath = getProfilePath(workspaceId);
 
-    // Ensure profile exists; if not, generate a fallback based on cwd
-    if (!existsSync(profilePath)) {
-      const profile = generateSandboxProfile(options.cwd);
-      mkdirSync(dirname(profilePath), { recursive: true });
-      writeFileSync(profilePath, profile, 'utf-8');
-    }
+    // Build a precise profile from the exact env vars used by the runner
+    const profile = generateSandboxProfile({
+      workspaceGroup: options.env.HAPPYCLAW_WORKSPACE_GROUP,
+      workspaceGlobal: options.env.HAPPYCLAW_WORKSPACE_GLOBAL,
+      workspaceMemory: options.env.HAPPYCLAW_WORKSPACE_MEMORY,
+      workspaceIpc: options.env.HAPPYCLAW_WORKSPACE_IPC,
+      configDir: options.env.CLAUDE_CONFIG_DIR,
+      tmpDir: options.env.CLAUDE_CODE_TMPDIR,
+    });
+    mkdirSync(dirname(profilePath), { recursive: true });
+    const tmpProfilePath = profilePath + '.tmp';
+    writeFileSync(tmpProfilePath, profile, 'utf-8');
+    renameSync(tmpProfilePath, profilePath);
 
     const args = ['-f', profilePath, options.command, ...options.args];
     const proc = spawn('sandbox-exec', args, {

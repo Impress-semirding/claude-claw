@@ -39,12 +39,26 @@ export async function generateToken(user: IUser): Promise<string> {
   return token;
 }
 
-// Verify JWT token
+// Verify JWT token (also checks revocation and user status)
 export async function verifyToken(token: string): Promise<IAuthToken | null> {
   try {
     const { payload } = await joseJwtVerify(token, JWT_SECRET);
+    const userId = payload.userId as string;
+
+    // Check session is active and not expired
+    const session = userSessionDb.findByToken(token);
+    if (!session || session.status !== 'active' || session.expiresAt < Date.now()) {
+      return null;
+    }
+
+    // Check user status
+    const user = userDb.findById(userId);
+    if (!user || user.status === 'deleted' || user.status === 'disabled') {
+      return null;
+    }
+
     return {
-      userId: payload.userId as string,
+      userId,
       email: payload.email as string,
       role: payload.role as string,
     };
@@ -193,8 +207,24 @@ export function restoreUser(id: string): void {
   userDb.update(id, { status: 'active', deletedAt: undefined });
 }
 
+const WEAK_PASSWORDS = new Set(['admin123', 'password', '123456', 'qwerty', 'admin']);
+
+function isWeakPassword(password: string): boolean {
+  if (WEAK_PASSWORDS.has(password.toLowerCase())) return true;
+  if (password.length < 8) return true;
+  return false;
+}
+
 // Initialize admin user
 export async function initAdminUser(): Promise<void> {
+  if (isWeakPassword(appConfig.adminPassword) && process.env.NODE_ENV === 'production') {
+    console.error('\n\n╔════════════════════════════════════════════════════════════════╗');
+    console.error('║ SECURITY ALERT: Default/weak admin password detected.         ║');
+    console.error('║ Please set a strong ADMIN_PASSWORD in your environment.       ║');
+    console.error('╚════════════════════════════════════════════════════════════════╝\n');
+    process.exit(1);
+  }
+
   const existing = userDb.findByEmail(appConfig.adminEmail);
   if (!existing) {
     const passwordHash = await hashPassword(appConfig.adminPassword);
@@ -206,6 +236,10 @@ export async function initAdminUser(): Promise<void> {
       passwordHash,
     });
     console.log(`Admin user created: ${appConfig.adminEmail}`);
+  }
+
+  if (isWeakPassword(appConfig.adminPassword)) {
+    console.warn('\n[SECURITY WARNING] Admin password is weak. Please change it in production.\n');
   }
 }
 

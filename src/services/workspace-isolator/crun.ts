@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'child_process';
-import { mkdirSync, writeFileSync, existsSync, rmSync } from 'fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, renameSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { appConfig } from '../../config.js';
 import type { WorkspaceIsolator, SpawnOptions } from './index.js';
@@ -101,7 +101,11 @@ export class CrunIsolator implements WorkspaceIsolator {
           gid: 65534,
         },
         args: [nodeBinary],
-        env: Object.entries(process.env).map(([k, v]) => `${k}=${v}`),
+        env: [
+          'PATH=/usr/local/bin:/usr/bin:/bin',
+          'HOME=/workspace',
+          'NODE_ENV=production',
+        ],
         cwd: '/workspace',
         capabilities: {
           bounding: [],
@@ -536,6 +540,42 @@ export class CrunIsolator implements WorkspaceIsolator {
     const wsDir = getCrunWorkspaceDir(workspaceId, userId);
     const bundleDir = resolve(wsDir, 'bundle');
     const containerId = `claw-${userId.slice(0, 8)}-${workspaceId.slice(0, 8)}-${Date.now()}`;
+
+    // Rewrite OCI config with exact env and workspace mounts for this run
+    const configPath = resolve(bundleDir, 'config.json');
+    try {
+      const raw = readFileSync(configPath, 'utf-8');
+      const oci = JSON.parse(raw);
+
+      // 1. Use options.env instead of leaking full host env
+      oci.process.env = Object.entries(options.env || {}).map(([k, v]) => `${k}=${v}`);
+
+      // 2. Add bind mounts for all HAPPYCLAW_WORKSPACE_* directories so runner sees same absolute paths
+      const extraDirs = [
+        options.env.HAPPYCLAW_WORKSPACE_GROUP,
+        options.env.HAPPYCLAW_WORKSPACE_GLOBAL,
+        options.env.HAPPYCLAW_WORKSPACE_MEMORY,
+        options.env.HAPPYCLAW_WORKSPACE_IPC,
+      ].filter((d): d is string => typeof d === 'string' && d.length > 0);
+
+      const seen = new Set((oci.mounts as any[]).map((m) => m.destination));
+      for (const dir of extraDirs) {
+        if (!seen.has(dir)) {
+          oci.mounts.push({
+            type: 'bind',
+            source: dir,
+            destination: dir,
+            options: ['rbind', 'rw', 'nosuid', 'noexec', 'nodev'],
+          });
+        }
+      }
+
+      const tmpConfigPath = configPath + '.tmp';
+      writeFileSync(tmpConfigPath, JSON.stringify(oci, null, 2), 'utf-8');
+      renameSync(tmpConfigPath, configPath);
+    } catch (err) {
+      // If rewrite fails fall back to whatever was prepared
+    }
 
     const args = ['run', '--bundle=' + bundleDir, containerId];
     const proc = spawn('crun', args, {

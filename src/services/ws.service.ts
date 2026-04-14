@@ -1,6 +1,8 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { verifyToken } from './auth.service.js';
+import { logger } from '../logger.js';
 import type { WsMessageOut, WsMessageIn, StreamEvent } from '../types.js';
+import { groupDb } from '../db.js';
 
 export interface WsClientInfo {
   sessionId: string;
@@ -66,8 +68,19 @@ export function setupWebSocket(server: any): WebSocketServer {
       return;
     }
 
-    console.log('[ws] client connected', session.userId, 'role=', session.role, 'totalClients=', wsClients.size + 1);
+    logger.info({ userId: session.userId, role: session.role, totalClients: wsClients.size + 1 }, '[ws] client connected');
     wsClients.set(ws, session);
+
+    // Heartbeat to keep connection alive through proxies and browser power-saving
+    const pingInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.ping();
+      }
+    }, 30000);
+
+    ws.on('pong', () => {
+      logger.trace({ userId: session.userId }, '[ws] pong received');
+    });
 
     ws.on('message', async (data) => {
       try {
@@ -81,15 +94,32 @@ export function setupWebSocket(server: any): WebSocketServer {
     });
 
     ws.on('close', () => {
+      clearInterval(pingInterval);
       wsClients.delete(ws);
     });
 
     ws.on('error', () => {
+      clearInterval(pingInterval);
       wsClients.delete(ws);
     });
   });
 
   return wss;
+}
+
+function resolveGroupJid(chatJid: string): string {
+  const match = chatJid.match(/^(.+)#agent:(.+)$/);
+  return match ? match[1] : chatJid;
+}
+
+function buildChatFilter(chatJid: string): (client: WsClientInfo) => boolean {
+  const groupJid = resolveGroupJid(chatJid);
+  const group = groupDb.findById(groupJid);
+  if (!group) {
+    return () => false;
+  }
+  const members = new Set<string>([group.ownerId, ...(group.members || [])]);
+  return (client) => members.has(client.userId) || client.role === 'admin';
 }
 
 /**
@@ -102,9 +132,10 @@ export function safeBroadcast(
   const data = JSON.stringify(msg);
   let sent = 0;
   let skipped = 0;
+  const toDelete: WebSocket[] = [];
   for (const [client, clientInfo] of wsClients) {
     if (client.readyState !== WebSocket.OPEN) {
-      wsClients.delete(client);
+      toDelete.push(client);
       continue;
     }
     if (filter && !filter(clientInfo)) {
@@ -115,13 +146,16 @@ export function safeBroadcast(
       client.send(data);
       sent++;
     } catch {
-      wsClients.delete(client);
+      toDelete.push(client);
     }
   }
+  for (const client of toDelete) {
+    wsClients.delete(client);
+  }
   if (msg.type === 'new_message') {
-    console.log('[ws] broadcast new_message chatJid=', msg.chatJid, 'messageId=', (msg as any).message?.id, 'sender=', (msg as any).message?.sender, 'sent=', sent, 'skipped=', skipped, 'totalClients=', wsClients.size);
+    logger.info({ chatJid: msg.chatJid, messageId: (msg as any).message?.id, sender: (msg as any).message?.sender, sent, skipped, totalClients: wsClients.size }, '[ws] broadcast new_message');
   } else {
-    console.log('[ws] broadcast', msg.type, 'chatJid=', msg.chatJid, 'sent=', sent, 'skipped=', skipped, 'totalClients=', wsClients.size);
+    logger.trace({ type: msg.type, chatJid: msg.chatJid, sent, skipped, totalClients: wsClients.size }, '[ws] broadcast');
   }
 }
 
@@ -138,7 +172,7 @@ export function broadcastNewMessage(
     ...(agentId ? { agentId } : {}),
     ...(source ? { source } : {}),
   };
-  safeBroadcast(out, () => true);
+  safeBroadcast(out, buildChatFilter(chatJid));
 }
 
 export function broadcastStreamEvent(
@@ -152,7 +186,7 @@ export function broadcastStreamEvent(
     event,
     ...(agentId ? { agentId } : {}),
   };
-  safeBroadcast(out, () => true);
+  safeBroadcast(out, buildChatFilter(chatJid));
 }
 
 export function broadcastRunnerState(
@@ -162,14 +196,14 @@ export function broadcastRunnerState(
 ): void {
   safeBroadcast(
     { type: 'runner_state', chatJid, state, ...(agentId ? { agentId } : {}) },
-    () => true
+    buildChatFilter(chatJid)
   );
 }
 
 export function broadcastTyping(chatJid: string, isTyping: boolean, agentId?: string): void {
   safeBroadcast(
     { type: 'typing', chatJid, isTyping, ...(agentId ? { agentId } : {}) },
-    () => true
+    buildChatFilter(chatJid)
   );
 }
 
@@ -193,7 +227,7 @@ export function broadcastAgentStatus(
       resultSummary,
       kind,
     } as any,
-    () => true
+    buildChatFilter(chatJid)
   );
 }
 
@@ -213,7 +247,7 @@ export function broadcastToWebClients(chatJid: string, text: string): void {
   const timestamp = new Date().toISOString();
   safeBroadcast(
     { type: 'agent_reply', chatJid, text, timestamp },
-    () => true
+    buildChatFilter(chatJid)
   );
 }
 

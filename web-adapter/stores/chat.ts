@@ -615,12 +615,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
           const list = s.messages[chatJid] || [];
           const mapped = mapMessage(message);
           const isAssistant = mapped.is_from_me;
+          const nextStreaming = isAssistant
+            ? (() => { const n = { ...s.streaming }; delete n[chatJid]; return n; })()
+            : s.streaming;
           return {
             messages: {
               ...s.messages,
               [chatJid]: [...list, mapped],
             },
             waiting: { ...s.waiting, [chatJid]: isAssistant ? false : s.waiting[chatJid] },
+            streaming: nextStreaming,
           };
         });
       }
