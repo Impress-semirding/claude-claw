@@ -870,6 +870,7 @@ process.stdin.on('end', () => {
       chatJid: workspace,
       workspaceDir: absWorkDir,
       userGlobalPath: resolve(appConfig.dataDir, 'groups', 'user-global', userId, 'CLAUDE.md'),
+      memoryDir,
       groupConfig,
       isHome: true,
     },

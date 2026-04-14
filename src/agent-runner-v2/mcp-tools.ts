@@ -1133,10 +1133,12 @@ Use the skills panel in the UI to find the skill ID (directory name, e.g. "memor
         const maxResults = Math.min(Math.max(args.max_results ?? 20, 1), 50);
         const queryLower = args.query.toLowerCase();
         const files: string[] = [];
+        console.error(JSON.stringify({ level: 'info', msg: `[memory_search] searching dirs: workspaceMemory=${ctx.workspaceMemory}, workspaceGroup=${ctx.workspaceGroup}, workspaceGlobal=${ctx.workspaceGlobal}`, source: 'agent-runner', timestamp: new Date().toISOString() }));
         collectMemoryFiles(ctx.workspaceMemory, files, 4);
         collectMemoryFiles(ctx.workspaceGroup, files, 4);
         collectMemoryFiles(ctx.workspaceGlobal, files, 4);
         const uniqueFiles = Array.from(new Set(files));
+        console.error(JSON.stringify({ level: 'info', msg: `[memory_search] collected ${uniqueFiles.length} files: ${uniqueFiles.join(', ')}`, source: 'agent-runner', timestamp: new Date().toISOString() }));
         if (uniqueFiles.length === 0) {
           return {
             content: [

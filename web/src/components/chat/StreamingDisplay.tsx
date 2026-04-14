@@ -371,8 +371,10 @@ export function StreamingDisplay({ groupJid, isWaiting, senderName: senderNamePr
     // Record the moment waiting starts
     lastStreamActivityRef.current = Date.now();
 
-    const STALE_NO_DATA_MS = 60_000;   // 60s with no stream data at all
-    const STALE_WITH_DATA_MS = 180_000; // 3min since last stream event
+    // Long-running tasks (builds, installs) can be silent for many minutes.
+    // Only treat as stale after very long periods to avoid wiping legitimate stream state.
+    const STALE_NO_DATA_MS = 600_000;    // 10 min with no stream data at all
+    const STALE_WITH_DATA_MS = 1_800_000; // 30 min since last stream event
 
     const interval = setInterval(() => {
       const elapsed = Date.now() - lastStreamActivityRef.current;
@@ -383,18 +385,17 @@ export function StreamingDisplay({ groupJid, isWaiting, senderName: senderNamePr
       const threshold = hasData ? STALE_WITH_DATA_MS : STALE_NO_DATA_MS;
 
       if (elapsed > threshold) {
-        // Clear the stuck waiting state via clearStreaming (handles pendingThinking + SDK Task preservation)
-        useChatStore.getState().clearStreaming(groupJid);
+        // Only reset waiting flag — DO NOT wipe streaming state or sessionStorage.
+        // This prevents the UI from getting stuck while preserving accumulated
+        // partialText/thinkingText so a page refresh can restore them.
         if (agentId) {
-          // clearStreaming doesn't handle agent-specific state, clean it separately
-          useChatStore.setState(s => {
-            const nextStreaming = { ...s.agentStreaming };
-            delete nextStreaming[agentId];
-            return {
-              agentWaiting: { ...s.agentWaiting, [agentId]: false },
-              agentStreaming: nextStreaming,
-            };
-          });
+          useChatStore.setState(s => ({
+            agentWaiting: { ...s.agentWaiting, [agentId]: false },
+          }));
+        } else {
+          useChatStore.setState(s => ({
+            waiting: { ...s.waiting, [groupJid]: false },
+          }));
         }
       }
     }, 10_000); // check every 10s

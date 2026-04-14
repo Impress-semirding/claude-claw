@@ -276,7 +276,7 @@ function saveStreamingToSession(chatJid: string, state: StreamingState | undefin
       if (state && (state.partialText || state.activeTools.length > 0 || state.recentEvents.length > 0)) {
         stored[chatJid] = {
           partialText: state.partialText.slice(-4000), // cap size
-          thinkingText: '',  // don't persist thinking
+          thinkingText: state.thinkingText.slice(-4000),
           isThinking: false,
           activeTools: state.activeTools,
           recentEvents: state.recentEvents.slice(-10),

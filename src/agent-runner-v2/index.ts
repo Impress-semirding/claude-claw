@@ -72,6 +72,7 @@ interface ClawRunnerInput {
     chatJid?: string;
     workspaceDir?: string;
     userGlobalPath?: string;
+    memoryDir?: string;
     groupConfig?: any;
     isHome?: boolean;
   };
@@ -1864,6 +1865,8 @@ async function _runPersistentQueryInner(clawInput: ClawRunnerInput): Promise<voi
   latestSessionId = sessionId;
   const { isHome, isAdminHome } = normalizeHomeFlags(containerInput);
 
+  const effectiveWorkspaceMemory = clawInput.mcpEnv?.memoryDir || WORKSPACE_MEMORY;
+  log(`[persistent] workspaceMemory resolved: ${effectiveWorkspaceMemory} (memoryDir=${clawInput.mcpEnv?.memoryDir || 'undefined'}, fallback=${WORKSPACE_MEMORY})`);
   const mcpToolsConfig = {
     chatJid: containerInput.chatJid,
     groupFolder: containerInput.groupFolder,
@@ -1873,7 +1876,7 @@ async function _runPersistentQueryInner(clawInput: ClawRunnerInput): Promise<voi
     workspaceIpc: clawInput.ipcDir ? path.dirname(clawInput.ipcDir) : WORKSPACE_IPC,
     workspaceGroup: WORKSPACE_GROUP,
     workspaceGlobal: WORKSPACE_GLOBAL,
-    workspaceMemory: WORKSPACE_MEMORY,
+    workspaceMemory: effectiveWorkspaceMemory,
     outputMode,
   };
   const mcpServerConfig = createSdkMcpServer({
