@@ -17,10 +17,10 @@ let mockServer: ReturnType<typeof spawn> | null = null;
 
 async function startMockServer() {
   return new Promise<void>((resolve, reject) => {
-    const mockPath = '/Users/dingxue/Documents/claude//web/tests/e2e/mock-anthropic-server.mjs';
+    const mockPath = resolve(__dirname, 'mock-anthropic-server.mjs');
     mockServer = spawn('node', [mockPath], {
       stdio: 'pipe',
-      cwd: '/Users/dingxue/Documents/claude//web',
+      cwd: resolve(__dirname, '../../web'),
     });
     let stdout = '';
     mockServer.stdout?.on('data', (d) => {

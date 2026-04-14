@@ -5,6 +5,7 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { resolve } from 'path';
 
 const BASE_URL = 'http://localhost:5173';
 const TEST_USER = 'admin@example.com';
@@ -29,7 +30,7 @@ test.describe('Login Flow', () => {
     // 1. Open web frontend
     await page.goto(BASE_URL);
     await page.waitForLoadState('networkidle');
-    await page.screenshot({ path: '/Users/dingxue/Documents/claude/claw/e2e/screenshots/01-initial.png', fullPage: true });
+    await page.screenshot({ path: resolve(__dirname, '../../e2e/screenshots/01-initial.png'), fullPage: true });
 
     // 2. Ensure we're on the login page (if already logged in, logout first)
     const url = page.url();
@@ -54,7 +55,7 @@ test.describe('Login Flow', () => {
 
     await usernameInput.fill(TEST_USER);
     await passwordInput.fill(TEST_PASS);
-    await page.screenshot({ path: '/Users/dingxue/Documents/claude/claw/e2e/screenshots/02-filled.png', fullPage: true });
+    await page.screenshot({ path: resolve(__dirname, '../../e2e/screenshots/02-filled.png'), fullPage: true });
 
     // 4. Submit form
     await loginButton.click();
@@ -62,7 +63,7 @@ test.describe('Login Flow', () => {
     // 5. Wait for navigation to dashboard/chat/setup
     await page.waitForURL(/\/(chat|setup|settings)/, { timeout: 15000 });
     await page.waitForLoadState('networkidle');
-    await page.screenshot({ path: '/Users/dingxue/Documents/claude/claw/e2e/screenshots/03-logged-in.png', fullPage: true });
+    await page.screenshot({ path: resolve(__dirname, '../../e2e/screenshots/03-logged-in.png'), fullPage: true });
 
     // 6. Verify no critical console errors
     const criticalErrors = consoleErrors.filter(
