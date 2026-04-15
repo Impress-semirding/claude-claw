@@ -369,23 +369,28 @@ export async function runAgentQuery(
       decrementPendingQuery(sessionId);
     }
 
-    if (result?.hadCompaction) {
+    const MEMORY_KEYWORDS = ['我叫', '我是', '请记住', '记住我', '记住这个', '我喜欢', '我讨厌', '我的工作是', '转行', '做前端', '做后端', '做开发'];
+    const shouldTriggerMemoryFlush = isUserQuery && MEMORY_KEYWORDS.some((k) => content.includes(k));
+
+    if (result?.hadCompaction || shouldTriggerMemoryFlush) {
       // Fire-and-forget so new user messages can acquire the session lock first
       Promise.resolve().then(async () => {
         if (pendingUserQueries.has(sessionId)) {
-          logger.info({ sessionId }, '[messages] skipping auto-continue because pending user queries exist');
+          logger.info({ sessionId }, '[messages] skipping auto-continue/flush because pending user queries exist');
           return;
         }
         try {
           const systemPrompt = await agent.buildSystemPrompt(env);
-          await runMemoryFlush(env.userId, chatJid, sessionId, mcpServers, systemPrompt);
+          await runMemoryFlush(env.userId, chatJid, sessionId, mcpServers, systemPrompt, env.userGlobalPath);
           if (pendingUserQueries.has(sessionId)) {
             logger.info({ sessionId }, '[messages] skipping auto-continue because user queries arrived during memory flush');
             return;
           }
-          await maybeAutoContinue(agent, env, sessionId, mcpServers, chatJid, agentId);
+          if (result?.hadCompaction) {
+            await maybeAutoContinue(agent, env, sessionId, mcpServers, chatJid, agentId);
+          }
         } catch (err) {
-          logger.error({ err }, '[messages] auto-continue chain error');
+          logger.error({ err }, '[messages] auto-continue/flush chain error');
         }
       });
     }
@@ -445,7 +450,8 @@ async function runMemoryFlush(
   chatJid: string,
   sessionId: string,
   mcpServers: Record<string, unknown>,
-  systemPrompt: string
+  systemPrompt: string,
+  userGlobalPath?: string
 ): Promise<void> {
   const flushKey = `flush:${sessionId}`;
   if (runningQueries.get(flushKey)) {
@@ -456,9 +462,10 @@ async function runMemoryFlush(
   runningQueries.set(flushKey, true);
   try {
     const today = new Date().toISOString().split('T')[0];
+    const globalClaudeMdPath = userGlobalPath || '/workspace/global/CLAUDE.md';
     const flushPrompt = [
       '上下文压缩前记忆刷新。',
-      '**优先检查全局记忆**：先 Read /workspace/global/CLAUDE.md，如果有「待记录」字段且你已获知对应信息（用户身份、偏好、常用项目等），用 Edit 工具立即填写。',
+      `**优先检查全局记忆**：先 Read ${globalClaudeMdPath}，如果有「待记录」字段且你已获知对应信息（用户身份、偏好、常用项目等），用 Edit 工具立即填写。`,
       '用户明确要求记住的内容，以及下次对话仍可能用到的信息，也写入全局记忆。',
       `然后使用 memory_append 将时效性记忆保存到 memory/${today}.md（今日进展、临时决策、待办等）。`,
       '如需确认上下文，可先用 memory_search/memory_get 查阅。',

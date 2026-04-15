@@ -997,7 +997,8 @@ function waitForIpcMessage(): Promise<{ text: string; images?: Array<{ data: str
   });
 }
 
-function buildMemoryRecallPrompt(isHome: boolean, isAdminHome: boolean): string {
+function buildMemoryRecallPrompt(isHome: boolean, isAdminHome: boolean, workspaceGlobal: string = WORKSPACE_GLOBAL): string {
+  const globalClaudeMdPath = path.join(workspaceGlobal, 'CLAUDE.md');
   if (isHome) {
     // Home container (admin or member): full memory system with read/write access to user's global CLAUDE.md
     return [
@@ -1015,7 +1016,7 @@ function buildMemoryRecallPrompt(isHome: boolean, isAdminHome: boolean): string 
       '获知重要信息后**必须立即保存**，不要等到上下文压缩。',
       '根据信息的**时效性**选择存储位置：',
       '',
-      '#### 全局记忆（永久）→ 直接编辑 `/workspace/global/CLAUDE.md`',
+      `#### 全局记忆（永久）→ 直接编辑 \`${globalClaudeMdPath}\``,
       '',
       '**优先使用全局记忆。** 适用于所有**跨会话仍然有用**的信息：',
       '- 用户身份：姓名、生日、联系方式、地址、工作单位',
@@ -1039,10 +1040,18 @@ function buildMemoryRecallPrompt(isHome: boolean, isAdminHome: boolean): string 
       '`memory_append` 自动保存到独立的记忆目录（不在工作区内）。',
       '',
       '#### 判断标准',
-      '> **默认优先全局记忆。** 问自己：这条信息下次对话还可能用到吗？',
-      '> - 是 / 可能 → **全局记忆**（编辑 `/workspace/global/CLAUDE.md`）',
+      `> **默认优先全局记忆。** 问自己：这条信息下次对话还可能用到吗？`,
+      `> - 是 / 可能 → **全局记忆**（编辑 \`${globalClaudeMdPath}\`）`,
       '> - 明确只跟今天有关 → 日期记忆（`memory_append`）',
       '> - 用户说「记住这个」→ **一定写全局记忆**',
+      '',
+      '#### 强制工作流',
+      `如果用户当前消息包含任何应写入全局记忆的信息（身份、职业、技术栈、偏好、明确要求「记住」的内容），你在输出任何文本回复之前，**必须**依次执行：`,
+      `1. 使用 \`Read\` 读取 \`${globalClaudeMdPath}\``,
+      '2. 使用 `Edit` 工具更新对应字段（标记为「待记录」的字段发现后必须立即填写）',
+      '3. 完成编辑后，再输出文本回复',
+      '',
+      '**未完成 Read + Edit 之前，禁止输出任何文本回复。**',
       '',
       '系统也会在上下文压缩前提示你保存记忆。',
     ].join('\n');
@@ -1060,7 +1069,7 @@ function buildMemoryRecallPrompt(isHome: boolean, isAdminHome: boolean): string 
     '重要信息直接记录在当前工作区的 CLAUDE.md 或其他文件中。',
     'Claude 会自动维护你的会话记忆，无需额外操作。',
     '',
-    '全局记忆（`/workspace/global/CLAUDE.md`）为只读参考。',
+    `全局记忆（\`${globalClaudeMdPath}\`）为只读参考。`,
   ].join('\n');
 }
 
@@ -1099,6 +1108,8 @@ async function runQuery(
   images?: Array<{ data: string; mimeType?: string }>,
   sourceKindOverride?: ContainerOutput['sourceKind'],
   cwd?: string,
+  workspaceGlobal: string = WORKSPACE_GLOBAL,
+  workspaceMemory: string = WORKSPACE_MEMORY,
 ): Promise<{ newSessionId?: string; lastAssistantUuid?: string; closedDuringQuery: boolean; contextOverflow?: boolean; unrecoverableTranscriptError?: boolean; interruptedDuringQuery: boolean; sessionResumeFailed?: boolean }> {
   const stream = new MessageStream();
   let newSessionId: string | undefined;
@@ -1226,7 +1237,7 @@ async function runQuery(
 
   // Build system prompt: memory recall guidance + global CLAUDE.md (for non-admin-home)
   const { isHome, isAdminHome } = normalizeHomeFlags(containerInput);
-  const globalClaudeMdPath = path.join(WORKSPACE_GLOBAL, 'CLAUDE.md');
+  const globalClaudeMdPath = path.join(workspaceGlobal, 'CLAUDE.md');
 
   // Home containers: inject full global CLAUDE.md for immediate context.
   // Non-home containers: global CLAUDE.md is accessible via filesystem (mounted readonly)
@@ -1267,7 +1278,7 @@ async function runQuery(
   // focusing on the user's current message.
   let heartbeatContent = '';
   if (isHome) {
-    const heartbeatPath = path.join(WORKSPACE_GLOBAL, 'HEARTBEAT.md');
+    const heartbeatPath = path.join(workspaceGlobal, 'HEARTBEAT.md');
     if (fs.existsSync(heartbeatPath)) {
       try {
         const raw = fs.readFileSync(heartbeatPath, 'utf-8');
@@ -1364,8 +1375,8 @@ async function runQuery(
   // Non-home containers only access memory directory; global CLAUDE.md is NOT
   // injected into systemPrompt but remains accessible via filesystem (readonly mount).
   const extraDirs = isHome
-    ? [WORKSPACE_GLOBAL, WORKSPACE_MEMORY]
-    : [WORKSPACE_MEMORY];
+    ? [workspaceGlobal, workspaceMemory]
+    : [workspaceMemory];
 
   if (shouldInterrupt()) {
     log('Interrupt sentinel detected before query start, skipping query');
@@ -1866,6 +1877,9 @@ async function _runPersistentQueryInner(clawInput: ClawRunnerInput): Promise<voi
   const { isHome, isAdminHome } = normalizeHomeFlags(containerInput);
 
   const effectiveWorkspaceMemory = clawInput.mcpEnv?.memoryDir || WORKSPACE_MEMORY;
+  const effectiveWorkspaceGlobal = clawInput.mcpEnv?.userGlobalPath
+    ? path.dirname(clawInput.mcpEnv.userGlobalPath)
+    : WORKSPACE_GLOBAL;
   log(`[persistent] workspaceMemory resolved: ${effectiveWorkspaceMemory} (memoryDir=${clawInput.mcpEnv?.memoryDir || 'undefined'}, fallback=${WORKSPACE_MEMORY})`);
   const mcpToolsConfig = {
     chatJid: containerInput.chatJid,
@@ -1875,7 +1889,7 @@ async function _runPersistentQueryInner(clawInput: ClawRunnerInput): Promise<voi
     isScheduledTask: false,
     workspaceIpc: clawInput.ipcDir ? path.dirname(clawInput.ipcDir) : WORKSPACE_IPC,
     workspaceGroup: WORKSPACE_GROUP,
-    workspaceGlobal: clawInput.mcpEnv?.userGlobalPath ? path.dirname(clawInput.mcpEnv.userGlobalPath) : WORKSPACE_GLOBAL,
+    workspaceGlobal: effectiveWorkspaceGlobal,
     workspaceMemory: effectiveWorkspaceMemory,
     outputMode,
   };
@@ -1884,7 +1898,7 @@ async function _runPersistentQueryInner(clawInput: ClawRunnerInput): Promise<voi
     version: '1.0.0',
     tools: createMcpTools(mcpToolsConfig),
   });
-  const memoryRecallPrompt = buildMemoryRecallPrompt(isHome, isAdminHome);
+  const memoryRecallPrompt = buildMemoryRecallPrompt(isHome, isAdminHome, effectiveWorkspaceGlobal);
 
   // Ensure IPC dir exists
   fs.mkdirSync(IPC_INPUT_DIR, { recursive: true });
@@ -1906,6 +1920,8 @@ async function _runPersistentQueryInner(clawInput: ClawRunnerInput): Promise<voi
     clawInput.options?.images,
     undefined,
     clawInput.mcpEnv?.workspaceDir,
+    effectiveWorkspaceGlobal,
+    effectiveWorkspaceMemory,
   );
 
   if (queryResult.newSessionId) {
@@ -1996,7 +2012,7 @@ async function main(): Promise<void> {
     tools: createMcpTools(mcpToolsConfig),
   });
   let mcpServerConfig = buildMcpServerConfig();
-  const memoryRecallPrompt = buildMemoryRecallPrompt(isHome, isAdminHome);
+  const memoryRecallPrompt = buildMemoryRecallPrompt(isHome, isAdminHome, effectiveWorkspaceGlobal);
   fs.mkdirSync(IPC_INPUT_DIR, { recursive: true });
 
   // Clean up stale sentinels from previous container runs.
@@ -2059,6 +2075,10 @@ async function main(): Promise<void> {
         clawInput?.allowedTools || DEFAULT_ALLOWED_TOOLS,
         clawInput?.disallowedTools,
         promptImages,
+        undefined,
+        undefined,
+        effectiveWorkspaceGlobal,
+        effectiveWorkspaceMemory,
       );
       if (queryResult.newSessionId) {
         sessionId = queryResult.newSessionId;
@@ -2174,9 +2194,10 @@ async function main(): Promise<void> {
         log('Running memory flush query after compaction...');
 
         const today = new Date().toISOString().split('T')[0];
+        const globalClaudeMdPath = path.join(effectiveWorkspaceGlobal, 'CLAUDE.md');
         const flushPrompt = [
           '上下文压缩前记忆刷新。',
-          '**优先检查全局记忆**：先 Read /workspace/global/CLAUDE.md，如果有「待记录」字段且你已获知对应信息（用户身份、偏好、常用项目等），用 Edit 工具立即填写。',
+          `**优先检查全局记忆**：先 Read ${globalClaudeMdPath}，如果有「待记录」字段且你已获知对应信息（用户身份、偏好、常用项目等），用 Edit 工具立即填写。`,
           '用户明确要求记住的内容，以及下次对话仍可能用到的信息，也写入全局记忆。',
           `然后使用 memory_append 将时效性记忆保存到 memory/${today}.md（今日进展、临时决策、待办等）。`,
           '如需确认上下文，可先用 memory_search/memory_get 查阅。',
@@ -2193,6 +2214,10 @@ async function main(): Promise<void> {
           false,
           MEMORY_FLUSH_ALLOWED_TOOLS,
           MEMORY_FLUSH_DISALLOWED_TOOLS,
+          undefined,
+          undefined,
+          effectiveWorkspaceGlobal,
+          effectiveWorkspaceMemory,
         );
         if (flushResult.newSessionId) { sessionId = flushResult.newSessionId; latestSessionId = sessionId; }
         if (flushResult.lastAssistantUuid) resumeAt = flushResult.lastAssistantUuid;
@@ -2247,6 +2272,8 @@ async function main(): Promise<void> {
             undefined,
             undefined,
             'auto_continue',
+            effectiveWorkspaceGlobal,
+            effectiveWorkspaceMemory,
           );
           if (autoContResult.newSessionId) {
             sessionId = autoContResult.newSessionId;
