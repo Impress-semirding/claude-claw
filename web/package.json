@@ -20,6 +20,7 @@
     "clsx": "^2.1.1",
     "dompurify": "^3.3.3",
     "highlight.js": "^11.11.1",
+    "katex": "^0.16.9",
     "html-to-image": "^1.11.13",
     "lucide-react": "^0.400.0",
     "mermaid": "^11.12.3",
