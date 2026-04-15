@@ -1,11 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { spawn } from 'child_process';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { resolve } from 'path';
 import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'fs';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 const CLAW_CONFIG_DIR = resolve('/Users/dingxue/Documents/claude/claw/data/config');
 const PROVIDERS_PATH = resolve(CLAW_CONFIG_DIR, 'claude-providers.json');
@@ -16,17 +12,17 @@ const SECRETS_BACKUP = resolve(CLAW_CONFIG_DIR, 'claude-secrets.json.e2e-backup'
 let mockServer: ReturnType<typeof spawn> | null = null;
 
 async function startMockServer() {
-  return new Promise<void>((resolve, reject) => {
-    const mockPath = resolve(__dirname, 'mock-anthropic-server.mjs');
+  return new Promise<void>((res, reject) => {
+    const mockPath = resolve(process.cwd(), 'tests/e2e/mock-anthropic-server.mjs');
     mockServer = spawn('node', [mockPath], {
       stdio: 'pipe',
-      cwd: resolve(__dirname, '../../web'),
+      cwd: resolve(process.cwd(), 'web'),
     });
     let stdout = '';
     mockServer.stdout?.on('data', (d) => {
       stdout += d.toString();
       if (stdout.includes('listening on')) {
-        resolve();
+        res();
       }
     });
     mockServer.stderr?.on('data', (d) => {
@@ -105,7 +101,7 @@ async function login(page: Page) {
   await page.goto('/login');
   await expect(page.locator('h1')).toContainText('欢迎使用 ');
   await page.locator('#username').fill('admin@example.com');
-  await page.locator('#password').fill('test123');
+  await page.locator('#password').fill('admin123');
   await page.getByRole('button', { name: /登录/ }).click();
   await page.waitForURL(/\/chat/);
 }
@@ -173,5 +169,5 @@ test('完整链路：登录 -> 创建工作区 -> 发送消息 -> Agent 回复',
   expect(hasReply || hasError).toBe(true);
 
   // 截图留档
-  await page.screenshot({ path: resolve(__dirname, '../../test-results/e2e-reply.png') });
+  await page.screenshot({ path: resolve(process.cwd(), 'test-results/e2e-reply.png') });
 });

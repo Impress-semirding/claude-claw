@@ -313,11 +313,36 @@ export class ClaudeAgent {
       ].join('\n');
     }
 
+    // ---------- L_workspace: 工作目录约束 ----------
+    // 告知 Claude 当前会话的专属工作目录，强制所有文件操作限制在此范围内。
+    // sandbox filesystem 规则已在 OS 层硬性拦截跨用户写入；
+    // 此 prompt 是配合约束，让 Claude 主动使用正确的相对路径，
+    // 避免因路径歧义产生无效工具调用或意外的绝对路径引用。
+    const workspaceBoundaryRules = [
+      '',
+      '## 工作目录约束',
+      '',
+      `你当前会话的专属工作目录是：\`${workspaceDir}\``,
+      '',
+      '**所有文件操作必须在此目录内进行**，包括：',
+      '- 创建、编辑、读取、删除文件或目录',
+      '- 运行 Bash 命令时的相对路径基准',
+      '- 使用 Glob、Grep 等工具时的搜索范围',
+      '',
+      '**禁止访问此目录以外的任何路径**，例如：',
+      '- 其他用户的工作目录',
+      '- 系统目录（`/etc`、`/usr`、`/root` 等）',
+      '- 服务数据目录（`/data`、`./data` 等）',
+      '',
+      '如需引用文件，**优先使用相对路径**（相对于工作目录），不要使用绝对路径。',
+    ].join('\n');
+
     // ---------- 组装 6 层 XML systemPrompt ----------
     const systemPromptAppend = [
       globalClaudeMd && `<user-profile>\n${globalClaudeMd}\n</user-profile>`,
       `<behavior>\n${interactionGuidelines}\n</behavior>`,
       `<security>\n${securityRules}\n</security>`,
+      `<workspace-boundary>\n${workspaceBoundaryRules}\n</workspace-boundary>`,
       `<memory-system>\n${memoryRecallPrompt}\n</memory-system>`,
       heartbeatContent && `<recent-work>\n${heartbeatContent}\n</recent-work>`,
       `<output-format>\n${outputGuidelines}\n</output-format>`,

@@ -3,7 +3,7 @@ import { resolve } from 'path';
 import { mkdirSync } from 'fs';
 import { appConfig } from './config.js';
 
-const logsDir = resolve(appConfig.dataDir, 'logs');
+const logsDir = appConfig.paths.logs;
 mkdirSync(logsDir, { recursive: true });
 
 const fileDest = pino.destination({ dest: resolve(logsDir, 'app.log'), sync: true });

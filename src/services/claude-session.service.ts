@@ -275,14 +275,12 @@ export function destroySession(userId: string, workspace: string, sessionId: str
   // Update database
   sessionDb.update(sessionId, { status: 'destroyed' });
 
-  // Clean up isolated session directories only; workDir is shared per group
+  // Clean up ephemeral session directories only; configDir (.claude/) is preserved
+  // so the SDK JSONL transcript survives idle cleanup and can be resumed after restart.
+  // workDir is shared per group and is never deleted here.
   try {
-    const absConfigDir = resolve(appConfig.claude.baseDir, session.configDir);
     const absTmpDir = resolve(appConfig.claude.baseDir, session.tmpDir);
-    const absIpcDir = resolve(appConfig.dataDir, 'ipc', sessionId);
-    if (existsSync(absConfigDir)) {
-      rmSync(absConfigDir, { recursive: true, force: true });
-    }
+    const absIpcDir = resolve(appConfig.paths.logs, 'ipc', sessionId);
     if (existsSync(absTmpDir)) {
       rmSync(absTmpDir, { recursive: true, force: true });
     }
@@ -311,7 +309,7 @@ export function abortQuery(userId: string, workspace: string, sessionId: string)
   session.abortController.abort();
 
   // Graceful interrupt via sentinel: runner will call stream.interrupt() instead of hard kill
-  const ipcInputDir = resolve(appConfig.dataDir, 'ipc', sessionId, 'input');
+  const ipcInputDir = resolve(appConfig.paths.logs, 'ipc', sessionId, 'input');
   try {
     mkdirSync(ipcInputDir, { recursive: true });
     writeFileSync(resolve(ipcInputDir, '_interrupt'), JSON.stringify({ timestamp: Date.now() }), 'utf-8');
@@ -399,9 +397,10 @@ export async function* querySession({
   };
 }): AsyncGenerator<IStreamEvent> {
   const releaseLock = await acquireSessionLock(sessionId);
+  let session: (ISessionInfo & { abortController?: AbortController }) | undefined;
   try {
     const key = sessionKey(userId, workspace, sessionId);
-    let session = sessions.get(key);
+    session = sessions.get(key);
 
   // Auto-create session if not exists
   if (!session) {
@@ -631,6 +630,30 @@ process.stdin.on('end', () => {
   // Add user global dir as additional directory so the preset picks up CLAUDE.md from there
   const userGlobalDir = resolve(appConfig.dataDir, 'groups', 'user-global', userId);
   mkdirSync(userGlobalDir, { recursive: true });
+  const userGlobalClaudeMd = resolve(userGlobalDir, 'CLAUDE.md');
+  if (!existsSync(userGlobalClaudeMd)) {
+    writeFileSync(userGlobalClaudeMd, [
+      '# 用户全局记忆',
+      '',
+      '## 用户身份',
+      '- 姓名：待记录',
+      '- 职业/角色：待记录',
+      '- 技术栈偏好：待记录',
+      '',
+      '## 长期偏好',
+      '- 沟通风格：待记录',
+      '- 称呼方式：待记录',
+      '- 喜好：待记录',
+      '- 厌恶：待记录',
+      '',
+      '## 常用项目与上下文',
+      '- 待记录',
+      '',
+      '## 其他需要记住的信息',
+      '- 待记录',
+      '',
+    ].join('\n'), 'utf-8');
+  }
   const memoryDir = resolve(appConfig.dataDir, 'memory', userId);
   mkdirSync(memoryDir, { recursive: true });
   options.additionalDirectories = [userGlobalDir];
@@ -663,9 +686,36 @@ process.stdin.on('end', () => {
   // Only pass sandbox option when explicitly enabled;
   // passing sandbox: { enabled: false } causes the SDK to hang on macOS
   if (appConfig.claude.sandboxEnabled) {
+    // Resolve the users data root — all user session dirs live under here.
+    // We deny access to the entire baseDir tree, then explicitly re-allow
+    // only the current session's workspace so Claude cannot read/write
+    // other users' files even if asked to.
+    const absBaseDir = resolve(appConfig.claude.baseDir);
     options.sandbox = {
       enabled: true,
       autoAllowBashIfSandboxed: true,
+      filesystem: {
+        // Whitelist: current session workspace + config dir + tmp dir
+        allowRead: [
+          absWorkDir,
+          `${absWorkDir}/**`,
+          absConfigDir,
+          `${absConfigDir}/**`,
+          absTmpDir,
+          `${absTmpDir}/**`,
+        ],
+        allowWrite: [
+          absWorkDir,
+          `${absWorkDir}/**`,
+          absConfigDir,
+          `${absConfigDir}/**`,
+          absTmpDir,
+          `${absTmpDir}/**`,
+        ],
+        // Blacklist: entire users data directory — covers all other users
+        denyRead:  [absBaseDir, `${absBaseDir}/**`],
+        denyWrite: [absBaseDir, `${absBaseDir}/**`],
+      },
     };
   }
 
@@ -675,6 +725,28 @@ process.stdin.on('end', () => {
   if (isCompacting) {
     const compactSummary = buildCompactSummary(sessionId);
     fullPrompt = `${compactSummary}\n\n${fullPrompt}`;
+  } else if (!session.sdkSessionId && !isMemoryFlush) {
+    // No SDK transcript available (new session or transcript was lost).
+    // Inject the last N DB messages so Claude can answer history questions
+    // like "我今天问过哪几个问题" even without a live transcript.
+    const recentMsgs = messageDb.findBySession(sessionId, 30);
+    if (recentMsgs.length > 0) {
+      const historyLines = recentMsgs.map((m) => {
+        const role = m.role === 'assistant' ? 'Claude' : '用户';
+        const text = (m.content || '').length > 500
+          ? (m.content || '').slice(0, 500) + '…'
+          : (m.content || '');
+        return `[${role}]: ${text}`;
+      });
+      const historyBlock = [
+        '<conversation-history>',
+        '以下是本次会话的历史消息记录（最近 ' + recentMsgs.length + ' 条），供你回答历史相关问题时参考：',
+        '',
+        historyLines.join('\n'),
+        '</conversation-history>',
+      ].join('\n');
+      fullPrompt = `${historyBlock}\n\n${fullPrompt}`;
+    }
   }
 
   // Build runner path with runtime detection (dist first, then dev fallback)
@@ -687,7 +759,7 @@ process.stdin.on('end', () => {
   const runnerPath = existsSync(distRunnerPath) ? distRunnerPath : devRunnerPath;
 
   // Ensure IPC directory exists for mid-query injection (monitored by runner)
-  const ipcInputDir = resolve(appConfig.dataDir, 'ipc', sessionId, 'input');
+  const ipcInputDir = resolve(appConfig.paths.logs, 'ipc', sessionId, 'input');
   mkdirSync(ipcInputDir, { recursive: true });
 
   // Serialize options: strip non-serializable functions that will be rebuilt in runner
@@ -920,7 +992,7 @@ process.stdin.on('end', () => {
         const command = isTs ? resolve(process.cwd(), 'node_modules/.bin/tsx') : 'node';
         logger.info({ sessionId, command, runnerPath, workspace }, '[claude-session] spawning agent runner (fallback)');
 
-        const runnerLogPath = resolve(appConfig.dataDir, 'logs', `runner-${sessionId}.log`);
+        const runnerLogPath = resolve(appConfig.paths.logs, `runner-${sessionId}.log`);
         runnerLogStream = createWriteStream(runnerLogPath, { flags: 'a' });
 
         const runnerEnv: Record<string, string> = {
@@ -928,7 +1000,7 @@ process.stdin.on('end', () => {
           HAPPYCLAW_WORKSPACE_GROUP: absWorkDir,
           HAPPYCLAW_WORKSPACE_GLOBAL: userGlobalDir,
           HAPPYCLAW_WORKSPACE_MEMORY: memoryDir,
-          HAPPYCLAW_WORKSPACE_IPC: resolve(appConfig.dataDir, 'ipc', sessionId),
+          HAPPYCLAW_WORKSPACE_IPC: resolve(appConfig.paths.logs, 'ipc', sessionId),
         };
         proc = isolator.spawn({
           command,
@@ -1100,6 +1172,13 @@ process.stdin.on('end', () => {
   }
   agentPool.release(sessionId);
   } finally {
+    // Safety net: if the generator was abandoned (consumer broke the for-await loop)
+    // or an uncaught error occurred before status was reset, don't leave the session
+    // stuck in 'running' — otherwise every subsequent message gets rejected.
+    if (session && session.status === 'running') {
+      session.status = 'idle';
+      sessionDb.update(sessionId, { status: 'idle' });
+    }
     releaseLock();
   }
 }

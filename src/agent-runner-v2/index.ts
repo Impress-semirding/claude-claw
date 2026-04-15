@@ -1875,7 +1875,7 @@ async function _runPersistentQueryInner(clawInput: ClawRunnerInput): Promise<voi
     isScheduledTask: false,
     workspaceIpc: clawInput.ipcDir ? path.dirname(clawInput.ipcDir) : WORKSPACE_IPC,
     workspaceGroup: WORKSPACE_GROUP,
-    workspaceGlobal: WORKSPACE_GLOBAL,
+    workspaceGlobal: clawInput.mcpEnv?.userGlobalPath ? path.dirname(clawInput.mcpEnv.userGlobalPath) : WORKSPACE_GLOBAL,
     workspaceMemory: effectiveWorkspaceMemory,
     outputMode,
   };
@@ -1971,6 +1971,12 @@ async function main(): Promise<void> {
   latestSessionId = sessionId;
   const { isHome, isAdminHome } = normalizeHomeFlags(containerInput);
 
+  // Resolve per-user paths when running in claw mode; fall back to env constants for legacy mode
+  const effectiveWorkspaceMemory = clawInput?.mcpEnv?.memoryDir || WORKSPACE_MEMORY;
+  const effectiveWorkspaceGlobal = clawInput?.mcpEnv?.userGlobalPath
+    ? path.dirname(clawInput.mcpEnv.userGlobalPath)
+    : WORKSPACE_GLOBAL;
+
   // Create in-process SDK MCP server (replaces the stdio subprocess)
   const mcpToolsConfig = {
     chatJid: containerInput.chatJid,
@@ -1980,8 +1986,8 @@ async function main(): Promise<void> {
     isScheduledTask: containerInput.isScheduledTask || false,
     workspaceIpc: WORKSPACE_IPC,
     workspaceGroup: WORKSPACE_GROUP,
-    workspaceGlobal: WORKSPACE_GLOBAL,
-    workspaceMemory: WORKSPACE_MEMORY,
+    workspaceGlobal: effectiveWorkspaceGlobal,
+    workspaceMemory: effectiveWorkspaceMemory,
     outputMode,
   };
   const buildMcpServerConfig = () => createSdkMcpServer({
