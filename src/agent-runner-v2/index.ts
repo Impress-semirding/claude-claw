@@ -648,6 +648,7 @@ function createPreCompactHook(
   isHome: boolean,
   _isAdminHome: boolean,
   deps: { emit: (output: ContainerOutput) => void; getFullText: () => string; resetFullText: () => void },
+  workspaceDir?: string,
 ): HookCallback {
   return async (input, _toolUseId, _context) => {
     const preCompact = input as PreCompactHookInput;
@@ -692,7 +693,8 @@ function createPreCompactHook(
       const summary = getSessionSummary(sessionId, transcriptPath);
       const name = summary ? sanitizeFilename(summary) : generateFallbackName();
 
-      const conversationsDir = path.join(WORKSPACE_GROUP, 'conversations');
+      const effectiveWorkspace = workspaceDir ?? WORKSPACE_GROUP;
+      const conversationsDir = path.join(effectiveWorkspace, 'conversations');
       fs.mkdirSync(conversationsDir, { recursive: true });
 
       const date = new Date().toISOString().split('T')[0];
@@ -1074,10 +1076,10 @@ function buildMemoryRecallPrompt(isHome: boolean, isAdminHome: boolean, workspac
 }
 
 /** 从 settings.json 读取用户配置的 MCP servers（stdio/http/sse 类型） */
-function loadUserMcpServers(): Record<string, unknown> {
-  const configDir = process.env.CLAUDE_CONFIG_DIR
-    || path.join(process.env.HOME || '/home/node', '.claude');
-  const settingsFile = path.join(configDir, 'settings.json');
+function loadUserMcpServers(configDir?: string, home?: string): Record<string, unknown> {
+  const effectiveConfigDir = configDir ?? process.env.CLAUDE_CONFIG_DIR
+    ?? path.join(home ?? process.env.HOME ?? '/home/node', '.claude');
+  const settingsFile = path.join(effectiveConfigDir, 'settings.json');
   try {
     if (fs.existsSync(settingsFile)) {
       const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf-8'));
@@ -1110,6 +1112,8 @@ async function runQuery(
   cwd?: string,
   workspaceGlobal: string = WORKSPACE_GLOBAL,
   workspaceMemory: string = WORKSPACE_MEMORY,
+  workspaceDir?: string,
+  queryEnv?: Record<string, string>,
 ): Promise<{ newSessionId?: string; lastAssistantUuid?: string; closedDuringQuery: boolean; contextOverflow?: boolean; unrecoverableTranscriptError?: boolean; interruptedDuringQuery: boolean; sessionResumeFailed?: boolean }> {
   const stream = new MessageStream();
   let newSessionId: string | undefined;
@@ -1406,15 +1410,16 @@ async function runQuery(
       settingSources: ['project', 'user'],
       includePartialMessages: true,
       mcpServers: {
-        ...loadUserMcpServers(),     // 用户配置的 MCP（stdio/http/sse），SDK 原生支持
-        happyclaw: mcpServerConfig,  // 内置 SDK MCP 放最后，确保不被同名覆盖
+        ...loadUserMcpServers(queryEnv?.CLAUDE_CONFIG_DIR, queryEnv?.HOME),
+        happyclaw: mcpServerConfig,
       },
+      ...(queryEnv && { env: queryEnv }),
       hooks: {
         PreCompact: [{ hooks: [createPreCompactHook(isHome, isAdminHome, {
           emit,
           getFullText: () => processor.getFullText(),
           resetFullText: () => processor.resetFullTextAccumulator(),
-        })] }]
+        }, workspaceDir)] }]
       },
       agents: PREDEFINED_AGENTS,
     } as any,
@@ -1832,23 +1837,12 @@ async function runPersistentMode(): Promise<void> {
  * then write CLAW_QUERY_END.
  */
 async function runPersistentQuery(clawInput: ClawRunnerInput, _initData: any): Promise<void> {
-  // Temporarily apply session-specific env vars (API key, configDir, etc.)
-  // sent inside options.env.  Restore originals after the query completes.
-  const queryEnv: Record<string, string> = clawInput.options?.env || {};
-  const restored: Record<string, string | undefined> = {};
-  for (const [k, v] of Object.entries(queryEnv)) {
-    restored[k] = process.env[k];
-    process.env[k] = v;
-  }
-
-  try {
-    await _runPersistentQueryInner(clawInput);
-  } finally {
-    for (const [k, v] of Object.entries(restored)) {
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
-    }
-  }
+  // Session-specific env vars (API key, CLAUDE_CONFIG_DIR, HOME, etc.) are
+  // passed directly to the SDK's query() via options.env in _runPersistentQueryInner.
+  // This eliminates the need to mutate the shared process.env of the persistent
+  // runner process, which could cause race conditions with async background
+  // agents (extractMemories, autoDream) that read process.env after the query.
+  await _runPersistentQueryInner(clawInput);
 }
 
 async function _runPersistentQueryInner(clawInput: ClawRunnerInput): Promise<void> {
@@ -1888,7 +1882,7 @@ async function _runPersistentQueryInner(clawInput: ClawRunnerInput): Promise<voi
     isAdminHome,
     isScheduledTask: false,
     workspaceIpc: clawInput.ipcDir ? path.dirname(clawInput.ipcDir) : WORKSPACE_IPC,
-    workspaceGroup: WORKSPACE_GROUP,
+    workspaceGroup: clawInput.mcpEnv?.workspaceDir ?? WORKSPACE_GROUP,
     workspaceGlobal: effectiveWorkspaceGlobal,
     workspaceMemory: effectiveWorkspaceMemory,
     outputMode,
@@ -1922,6 +1916,8 @@ async function _runPersistentQueryInner(clawInput: ClawRunnerInput): Promise<voi
     clawInput.mcpEnv?.workspaceDir,
     effectiveWorkspaceGlobal,
     effectiveWorkspaceMemory,
+    clawInput.mcpEnv?.workspaceDir,
+    clawInput.options?.env,
   );
 
   if (queryResult.newSessionId) {

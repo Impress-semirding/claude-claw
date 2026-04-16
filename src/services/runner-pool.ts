@@ -205,8 +205,9 @@ class RunnerPool {
       NODE_OPTIONS: process.env.NODE_OPTIONS || '--max-old-space-size=4096',
       ...(process.env.NODE_ENV ? { NODE_ENV: process.env.NODE_ENV } : {}),
       ...(process.env.HOME ? { HOME: process.env.HOME } : {}),
-      // Workspace dirs so MCP tools resolve correctly (same for all sessions)
-      ...(process.env.HAPPYCLAW_WORKSPACE_GROUP  ? { HAPPYCLAW_WORKSPACE_GROUP:  process.env.HAPPYCLAW_WORKSPACE_GROUP  } : {}),
+      // Workspace dirs: GLOBAL, MEMORY, IPC are shared infrastructure paths.
+      // WORKSPACE_GROUP is per-query (resolved via mcpEnv.workspaceDir), so
+      // it must NOT be set here for persistent runners.
       ...(process.env.HAPPYCLAW_WORKSPACE_GLOBAL ? { HAPPYCLAW_WORKSPACE_GLOBAL: process.env.HAPPYCLAW_WORKSPACE_GLOBAL } : {}),
       ...(process.env.HAPPYCLAW_WORKSPACE_MEMORY ? { HAPPYCLAW_WORKSPACE_MEMORY: process.env.HAPPYCLAW_WORKSPACE_MEMORY } : {}),
       ...(process.env.HAPPYCLAW_WORKSPACE_IPC    ? { HAPPYCLAW_WORKSPACE_IPC:    process.env.HAPPYCLAW_WORKSPACE_IPC    } : {}),
